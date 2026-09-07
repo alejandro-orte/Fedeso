@@ -81,7 +81,10 @@ def limpiar_numero(valor):
 
 def cargar_pestana(nombre_pestana):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
-    return pd.read_csv(url)
+    df = pd.read_csv(url)
+    # Limpia mayúsculas y espacios en los encabezados automáticamente
+    df.columns = df.columns.astype(str).str.strip().str.lower()
+    return df
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
