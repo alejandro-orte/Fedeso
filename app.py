@@ -47,6 +47,11 @@ def cargar_pestana(nombre_pestana):
     df = pd.read_csv(url)
     # Convierte encabezados a texto, elimina espacios invisibles y los pasa a minúsculas
     df.columns = [str(col).strip().lower() for col in df.columns]
+
+    # El parámetro 'nocache' obliga a Google a enviar los datos recién guardados
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={int(time.time())}"
+    df = pd.read_csv(url)
+    df.columns = [str(col).strip().lower() for col in df.columns]
     return df
 
 if "autenticado" not in st.session_state:
@@ -78,12 +83,7 @@ if not st.session_state["autenticado"]:
                 try:
                     df_users = cargar_pestana("Usuarios")
 
-                    # El parámetro 'nocache' obliga a Google a enviar los datos recién guardados
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={int(time.time())}"
-    df = pd.read_csv(url)
-    df.columns = [str(col).strip().lower() for col in df.columns]
-    return df
-                    
+                      
                     # Diagnóstico en pantalla si la columna 'usuario' sigue sin aparecer
                     if "usuario" not in df_users.columns:
                         st.error(f"❌ No se encontró la columna 'usuario' en la pestaña Usuarios.")
