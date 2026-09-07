@@ -5,7 +5,7 @@ import datetime
 
 # PEGA AQUÍ TUS CREDENCIALES
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycby8Kgd9JTYThEb0VpDdp4vS8RRQbQUDXArBR8vRT-2LJWN0NurtyPzRucUY8OaVNF6s/exec"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxNjwezzGqMoLWmOjhV3WhgnoL0CW8t05gOLDWtrbAV8fwyghOzqp4iKveULZ6jNjty/exec"
 
 def limpiar_numero(valor):
     if pd.isna(valor):
