@@ -5,7 +5,7 @@ import pandas as pd
 # CONFIGURACIÓN Y RECURSOS
 # =========================================================
 SHEET_ID = "PEGA_AQUI_TU_ID_DE_GOOGLE_SHEETS"
-FORM_URL = "https://12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
+FORM_URL = "https://https://docs.google.com/spreadsheets/d/12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ/edit?usp=sharing"
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
 st.set_page_config(
