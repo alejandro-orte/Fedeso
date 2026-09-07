@@ -81,7 +81,7 @@ else:
         st.session_state["nombre"] = ""
         st.rerun()
 
-    st.title(f"Simulación {st.session_state['nombre']}")
+    st.title(f"Asociado {st.session_state['nombre']}")
     usuario_key = st.session_state["usuario"]
     
     try:
