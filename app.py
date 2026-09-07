@@ -1,6 +1,68 @@
 import streamlit as st
 import pandas as pd
+import requests
+import datetime
 
+# PEGA AQUÍ LA URL QUE TE DIO GOOGLE APPS SCRIPT
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwXsXGtkEBQLdoWQQxZLgT6ghJuviieLu-XBMk0uWvKeJUHcH7yBbgW5hlqVzmR4uP3/exec"
+
+# ... (Mantiene tu función cargar_pestana y código de login aquí) ...
+
+# DENTRO DE LA PANTALLA PRINCIPAL (después de mostrar la amortización):
+
+st.divider()
+
+# Formulario para enviar nuevo abono
+st.subheader("💵 Registrar Nuevo Abono")
+
+with st.form("form_abono"):
+    col_f, col_m = st.columns(2)
+    fecha_pago = col_f.date_input("Fecha de pago", datetime.date.today())
+    monto_pago = col_m.number_input("Monto abonado ($)", min_value=0.0, step=10000.0)
+    nota_pago = st.text_input("Nota o comprobante (ej. N° Nequi, Transfiya o Banco)")
+    btn_guardar = st.form_submit_button("Guardar Abono")
+    
+    if btn_guardar:
+        if monto_pago > 0:
+            datos_envio = {
+                "usuario": st.session_state["usuario"],
+                "fecha": str(fecha_pago),
+                "monto": monto_pago,
+                "nota": nota_pago
+            }
+            respuesta = requests.post(WEBHOOK_URL, json=datos_envio)
+            if respuesta.status_code == 200:
+                st.success("¡Abono registrado correctamente!")
+                st.rerun()
+            else:
+                st.error("No se pudo guardar el abono en la base de datos.")
+        else:
+            st.warning("Ingresa un monto mayor a 0.")
+
+# Mostrar historial de abonos acumulados
+try:
+    df_abonos = cargar_pestana("Abonos")
+    df_abonos["usuario"] = df_abonos["usuario"].astype(str).str.strip().str.lower()
+    abonos_user = df_abonos[df_abonos["usuario"] == st.session_state["usuario"]].copy()
+    
+    if not abonos_user.empty:
+        st.subheader("📜 Historial de Abonos Realizados")
+        abonos_user["monto"] = abonos_user["monto"].apply(limpiar_numero)
+            
+        tabla_abonos = abonos_user[["fecha", "monto", "nota"]].copy()
+        tabla_abonos.columns = ["Fecha", "Monto Abonado", "Comprobante / Nota"]
+        
+        st.dataframe(
+            tabla_abonos.style.format({"Monto Abonado": "${:,.0f}"}),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        total_abonado = abonos_user["monto"].sum()
+        st.info(f"**Total abonado acumulado:** ${total_abonado:,.0f}")
+except Exception:
+    st.info("Aún no hay abonos registrados para este usuario.")
+    
 # PEGA AQUÍ TU ID DE GOOGLE SHEETS
 SHEET_ID = "1d77IinY-qGRbOn_ZuE0bLQQTjtrAR3tE"
 
