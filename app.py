@@ -4,8 +4,8 @@ import pandas as pd
 # =========================================================
 # CONFIGURACIÓN Y RECURSOS
 # =========================================================
-SHEET_ID = "PEGA_AQUI_TU_ID_DE_GOOGLE_SHEETS"
-FORM_URL = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
+SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
 st.set_page_config(
