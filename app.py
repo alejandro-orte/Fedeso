@@ -125,10 +125,7 @@ if not st.session_state["autenticado"]:
                         st.error("Usuario o contraseña incorrectos.")
                 except Exception as e:
                     st.error("Error al conectar. Verifica que el ID del Google Sheet sea correcto y el archivo sea público.")
-
-                    # Cambia esta línea:
-                    st.error("Error al conectar. Verifica que el ID del Google Sheet sea correcto y el archivo sea público.")
-
+                    
                     # Por esta otra:
                     st.error(f"Detalle del error: {e}")
 
