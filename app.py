@@ -1,8 +1,18 @@
 import streamlit as st
 import pandas as pd
 
-# PEGA AQUÍ ÚNICAMENTE TU ID DE GOOGLE SHEETS
+# PEGA AQUÍ TU ID DE GOOGLE SHEETS
 SHEET_ID = "1d77IinY-qGRbOn_ZuE0bLQQTjtrAR3tE"
+
+# Función para convertir textos con '$', ',' o '%' a números
+def limpiar_numero(valor):
+    if pd.isna(valor):
+        return 0.0
+    texto = str(valor).replace('$', '').replace(',', '').replace('%', '').strip()
+    try:
+        return float(texto)
+    except:
+        return 0.0
 
 def cargar_pestana(nombre_pestana):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
@@ -66,10 +76,10 @@ else:
         resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
         
         if not resumen_user.empty:
-            monto = float(resumen_user["monto"].iloc[0])
-            plazo = int(resumen_user["plazo"].iloc[0])
-            tasa = float(resumen_user["tasa_mv"].iloc[0])
-            cuota = float(resumen_user["cuota"].iloc[0])
+            monto = limpiar_numero(resumen_user["monto"].iloc[0])
+            plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
+            tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
+            cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
             
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Monto", f"${monto:,.0f}")
@@ -85,6 +95,12 @@ else:
         
         if not amort_user.empty:
             st.subheader("📋 Tabla de Amortización")
+            
+            # Limpiar columnas numéricas de la tabla
+            for col in ["intereses", "capital", "saldo"]:
+                if col in amort_user.columns:
+                    amort_user[col] = amort_user[col].apply(limpiar_numero)
+            
             tabla_mostrar = amort_user[["cuota_num", "mes_ano", "intereses", "capital", "saldo"]].copy()
             tabla_mostrar.columns = ["#", "Mes/Año", "Intereses", "Capital", "Saldo"]
             
