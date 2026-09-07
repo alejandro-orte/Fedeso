@@ -126,6 +126,12 @@ if not st.session_state["autenticado"]:
                 except Exception as e:
                     st.error("Error al conectar. Verifica que el ID del Google Sheet sea correcto y el archivo sea público.")
 
+                    # Cambia esta línea:
+                    st.error("Error al conectar. Verifica que el ID del Google Sheet sea correcto y el archivo sea público.")
+
+                    # Por esta otra:
+                    st.error(f"Detalle del error: {e}")
+
 # =========================================================
 # 2. PANTALLA INTERNA DEL USUARIO
 # =========================================================
