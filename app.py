@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 
 # =========================================================
 # CONFIGURACIÓN Y RECURSOS
@@ -76,6 +77,12 @@ if not st.session_state["autenticado"]:
             if submit:
                 try:
                     df_users = cargar_pestana("Usuarios")
+
+                    # El parámetro 'nocache' obliga a Google a enviar los datos recién guardados
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={int(time.time())}"
+    df = pd.read_csv(url)
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    return df
                     
                     # Diagnóstico en pantalla si la columna 'usuario' sigue sin aparecer
                     if "usuario" not in df_users.columns:
