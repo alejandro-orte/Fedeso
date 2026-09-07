@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # PEGA AQUÍ TU ID DE GOOGLE SHEETS
-SHEET_ID = "PEGA_AQUI_TU_ID_DE_GOOGLE_SHEETS"
+SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
 def limpiar_numero(valor):
