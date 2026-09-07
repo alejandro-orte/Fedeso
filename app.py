@@ -107,8 +107,8 @@ if not st.session_state["autenticado"]:
         
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
-            user_input = st.text_input("Usuario").strip().lower()
-            pass_input = st.text_input("Contraseña", type="password").strip()
+            user_input = st.text_input("usuario").strip().lower()
+            pass_input = st.text_input("contraseña", type="password").strip()
             submit = st.form_submit_button("Ingresar a mi Fondo", use_container_width=True)
             
             if submit:
