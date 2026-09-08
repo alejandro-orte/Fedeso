@@ -5,7 +5,7 @@ import time
 # =========================================================
 # CONFIGURACIÓN Y RECURSOS
 # =========================================================
-SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
+SHEET_ID = "1d77IinY-qGRbOn_ZuE0bLQQTjtrAR3tE"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
