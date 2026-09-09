@@ -184,7 +184,7 @@ else:
                     if col in amort_user.columns:
                         amort_user[col] = amort_user[col].apply(limpiar_numero)
                 
-                cols_existentes = [c for c in ["cuota_num", "mes_ano", "intereses", "capital", "saldo"] if c in amort_user.columns]
+                cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo"] if c in amort_user.columns]
                 tabla_mostrar = amort_user[cols_existentes].copy()
                 
                 st.dataframe(
