@@ -5,7 +5,7 @@ import time
 # =========================================================
 # CONFIGURACIÓN Y RECURSOS
 # =========================================================
-SHEET_ID = "1d77IinY-qGRbOn_ZuE0bLQQTjtrAR3tE"
+SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
@@ -43,13 +43,11 @@ def limpiar_numero(valor):
         return 0.0
 
 def cargar_pestana(nombre_pestana):
-    # Usamos la exportación directa de CSV que evita el sistema gviz (que guarda mucho caché)
+    # Petición directa a Google Sheets con parámetro para evitar caché y forzar todo como texto (dtype=str)
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={int(time.time())}"
-    
-    # Lectura con pandas
     df = pd.read_csv(url, dtype=str)
     
-    # Limpieza estricta de nombres de columnas
+    # Convierte encabezados a texto, elimina espacios invisibles y pasa a minúsculas
     df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
     return df
 
@@ -59,7 +57,7 @@ if "autenticado" not in st.session_state:
     st.session_state["nombre"] = ""
 
 # =========================================================
-# 1. PANTALLA DE LOGIN Y DIAGNÓSTICO
+# 1. PANTALLA DE LOGIN
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -72,11 +70,6 @@ if not st.session_state["autenticado"]:
         st.link_button("📝 Ir al Simulador de Crédito", FORM_URL, use_container_width=True)
         st.write("")
         
-        # Botón para forzar la recarga
-        if st.button("🔄 Recargar datos desde Google Sheets"):
-            st.cache_data.clear()
-            st.rerun()
-
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
             user_input = st.text_input("Usuario").strip().lower()
@@ -86,17 +79,14 @@ if not st.session_state["autenticado"]:
             if submit:
                 try:
                     df_users = cargar_pestana("Usuarios")
-                    
-                    # 🔍 BLOQUE DE DIAGNÓSTICO EN PANTALLA
-                    st.info("--- 📊 DIAGNÓSTICO DE DATOS LEÍDOS ---")
-                    st.write("Registros leídos exactamente desde la hoja 'Usuarios':")
-                    st.dataframe(df_users)
-                    
+                      
+                    # Validación de existencia de columnas principales
                     if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
-                        st.error("❌ No se encontraron las columnas 'usuario' o 'contrasena'.")
+                        st.error("❌ No se encontraron las columnas 'usuario' o 'contrasena' en la pestaña Usuarios.")
+                        st.warning(f"Columnas leídas por la app: {list(df_users.columns)}")
                     else:
-                        # Limpieza
-                        df_users["usuario_clean"] = (
+                        # Limpieza profunda de usuario (remueve \xa0, espacios invisibles y pasa a minúsculas)
+                        df_users["usuario"] = (
                             df_users["usuario"]
                             .fillna("")
                             .astype(str)
@@ -105,7 +95,8 @@ if not st.session_state["autenticado"]:
                             .str.lower()
                         )
                         
-                        df_users["pass_clean"] = (
+                        # Limpieza de contraseña (remueve \xa0, espacios y posibles decimales .0)
+                        df_users["contrasena"] = (
                             df_users["contrasena"]
                             .fillna("")
                             .astype(str)
@@ -114,14 +105,9 @@ if not st.session_state["autenticado"]:
                             .str.strip()
                         )
                         
-                        st.write("Datos procesados por la aplicación:")
-                        st.dataframe(df_users[["usuario_clean", "pass_clean"]])
-                        st.write(f"Buscando -> Usuario: `{user_input}` | Contraseña: `{pass_input}`")
-                        
-                        valido = df_users[(df_users["usuario_clean"] == user_input) & (df_users["pass_clean"] == pass_input)]
+                        valido = df_users[(df_users["usuario"] == user_input) & (df_users["contrasena"] == pass_input)]
                         
                         if not valido.empty:
-                            st.success("✅ ¡Usuario encontrado!")
                             st.session_state["autenticado"] = True
                             st.session_state["usuario"] = user_input
                             st.session_state["nombre"] = valido["nombre"].iloc[0] if "nombre" in valido.columns else user_input
