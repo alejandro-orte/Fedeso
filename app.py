@@ -43,14 +43,10 @@ def limpiar_numero(valor):
         return 0.0
 
 def cargar_pestana(nombre_pestana):
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
-    df = pd.read_csv(url)
-    # Convierte encabezados a texto, elimina espacios invisibles y los pasa a minúsculas
-    df.columns = [str(col).strip().lower() for col in df.columns]
-
-    # El parámetro 'nocache' obliga a Google a enviar los datos recién guardados
+    # 'nocache' evita que Google use copias desactualizadas y 'dtype=str' lee todo como texto para no alterar contraseñas o IDs
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={int(time.time())}"
-    df = pd.read_csv(url)
+    df = pd.read_csv(url, dtype=str)
+    # Convierte encabezados a texto, elimina espacios invisibles y los pasa a minúsculas
     df.columns = [str(col).strip().lower() for col in df.columns]
     return df
 
@@ -82,15 +78,23 @@ if not st.session_state["autenticado"]:
             if submit:
                 try:
                     df_users = cargar_pestana("Usuarios")
-
                       
-                    # Diagnóstico en pantalla si la columna 'usuario' sigue sin aparecer
-                    if "usuario" not in df_users.columns:
-                        st.error(f"❌ No se encontró la columna 'usuario' en la pestaña Usuarios.")
+                    # Validación de existencia de columnas
+                    if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
+                        st.error("❌ No se encontraron las columnas 'usuario' o 'contrasena' en la pestaña Usuarios.")
                         st.warning(f"Columnas leídas por la app: {list(df_users.columns)}")
                     else:
-                        df_users["usuario"] = df_users["usuario"].astype(str).str.strip().str.lower()
-                        df_users["contrasena"] = df_users["contrasena"].astype(str).str.strip()
+                        # Limpieza y normalización de usuarios
+                        df_users["usuario"] = df_users["usuario"].fillna("").astype(str).str.strip().str.lower()
+                        
+                        # Limpieza de contraseña eliminando decimales (.0) en caso de que vengan de un número
+                        df_users["contrasena"] = (
+                            df_users["contrasena"]
+                            .fillna("")
+                            .astype(str)
+                            .str.replace(r"\.0$", "", regex=True)
+                            .str.strip()
+                        )
                         
                         valido = df_users[(df_users["usuario"] == user_input) & (df_users["contrasena"] == pass_input)]
                         
@@ -129,7 +133,7 @@ else:
     try:
         df_resumen = cargar_pestana("Resumen")
         if "usuario" in df_resumen.columns:
-            df_resumen["usuario"] = df_resumen["usuario"].astype(str).str.strip().str.lower()
+            df_resumen["usuario"] = df_resumen["usuario"].fillna("").astype(str).str.strip().str.lower()
             resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
             
             if not resumen_user.empty:
@@ -148,7 +152,7 @@ else:
         
         df_amort = cargar_pestana("Amortizacion")
         if "usuario" in df_amort.columns:
-            df_amort["usuario"] = df_amort["usuario"].astype(str).str.strip().str.lower()
+            df_amort["usuario"] = df_amort["usuario"].fillna("").astype(str).str.strip().str.lower()
             amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
             
             if not amort_user.empty:
