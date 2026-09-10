@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS PERSONALIZADOS
+# ESTILOS CSS PERSONALIZADOS Y AJUSTES DE CONTRASTE
 # =========================================================
 st.markdown("""
     <style>
@@ -50,6 +50,20 @@ st.markdown("""
         letter-spacing: -0.5px;
         margin-bottom: 25px;
         text-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    /* Subtítulo de sección en blanco radiante */
+    .section-header-title {
+        color: #ffffff !important;
+        font-size: 1.35rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.5px;
+        margin-top: 25px;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.5);
     }
 
     /* Tarjetas blancas principales */
@@ -169,15 +183,32 @@ st.markdown("""
         box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
     }
 
-    /* Tabla */
+    /* ESTILIZACIÓN DE ENCABEZADOS DE LA TABLA (DATAFRAME) */
     div[data-testid="stDataFrame"] {
-        border-radius: 12px;
+        border-radius: 16px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
-        background-color: #ffffff;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
     }
 
-    /* Login */
+    /* Estilos forzados para los encabezados de Streamlit Dataframe */
+    div[data-testid="stDataFrame"] th {
+        background-color: #1e293b !important;
+        color: #ffffff !important;
+        font-weight: 800 !important;
+        font-size: 0.9rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        border-bottom: 2px solid #334155 !important;
+        padding: 12px 16px !important;
+    }
+
+    div[data-testid="stDataFrame"] [data-testid="stTable"] th span {
+        color: #ffffff !important;
+        font-weight: 800 !important;
+    }
+
+    /* Formulario de Login */
     div[data-testid="stForm"] {
         background-color: #ffffff;
         border-radius: 20px;
@@ -430,7 +461,7 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
 
-            # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO (BARRA INTEGRADA) ---
+            # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO ---
             pct_val = porcentaje_progreso * 100
             st.markdown(f"""
             <div class="softr-card">
@@ -463,11 +494,10 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-            st.write("")
-
             # --- TARJETA 3: TABLA PLAN DE PAGOS (AMORTIZACIÓN) ---
             if not amort_user.empty:
-                st.subheader("📅 PLAN DE PAGOS (AMORTIZACIONES)")
+                # Título con alto contraste (HTML personalizado)
+                st.markdown('<div class="section-header-title">📅 PLAN DE PAGOS (AMORTIZACIONES)</div>', unsafe_allow_html=True)
 
                 cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
                 tabla_mostrar = amort_user[cols_existentes].copy()
