@@ -6,7 +6,9 @@ import pandas as pd
 # =========================================================
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
-LOGO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+
+# Logo oficial FEDESO (Puedes reemplazar esta URL por un archivo local como 'logo.png')
+LOGO_URL = "https://i.ibb.co/3sH3T4f/FEDESO-logo.png"
 
 st.set_page_config(
     page_title="FEDESO - Mi Estado de Cuenta",
@@ -133,6 +135,7 @@ st.markdown("""
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
+        background-color: #ffffff;
     }
 
     .stProgress > div > div > div > div {
@@ -150,6 +153,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# =========================================================
+# FUNCIONES DE UTILIDAD Y CARGA DE DATOS
+# =========================================================
 def limpiar_numero(valor):
     if pd.isna(valor):
         return 0.0
@@ -171,6 +177,7 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
     return res.str.lower() if minusculas else res
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def cargar_usuarios() -> pd.DataFrame:
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Usuarios"
     df = pd.read_csv(url, dtype=str)
@@ -201,8 +208,9 @@ if not st.session_state["autenticado"]:
     with col_b:
         st.write("")
         st.write("")
-        st.image(LOGO_URL, width=80)
-        st.markdown("<h2 style='color: white; font-weight: 800;'>FEDESO</h2>", unsafe_allow_html=True)
+        # Imagen de marca en la pantalla de inicio de sesión
+        st.image(LOGO_URL, width=160)
+        st.markdown("<h2 style='color: white; font-weight: 800; margin-top: 10px;'>FEDESO</h2>", unsafe_allow_html=True)
         st.markdown("<p style='color: #cbd5e1; margin-bottom: 20px;'>Fondo Empresarial de Solidaridad</p>", unsafe_allow_html=True)
 
         with st.form("login_form"):
@@ -251,9 +259,12 @@ else:
     with header_col1:
         st.markdown(
             f"""
-            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
-                <img src="{LOGO_URL}" width="42"/>
-                <span style="color: white; font-weight: 800; font-size: 1.3rem; letter-spacing: 0.5px;">FEDESO</span>
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 15px;">
+                <img src="{LOGO_URL}" style="width: 65px; height: 65px; object-fit: cover; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2);"/>
+                <div>
+                    <span style="color: white; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; display: block; line-height: 1;">FEDESO</span>
+                    <span style="color: #cbd5e1; font-size: 0.85rem;">Fondo Empresarial de Solidaridad</span>
+                </div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -401,12 +412,7 @@ else:
 
             # --- TARJETA 3: TABLA PLAN DE PAGOS (AMORTIZACIÓN) ---
             if not amort_user.empty:
-                st.markdown("""
-                <div class="table-container-card">
-                    <div class="card-header">
-                        <span class="card-title">📅 PLAN DE PAGOS (AMORTIZACIONES)</span>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.subheader("📅 PLAN DE PAGOS (AMORTIZACIONES)")
 
                 cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
                 tabla_mostrar = amort_user[cols_existentes].copy()
@@ -441,8 +447,6 @@ else:
                     use_container_width=True,
                     hide_index=True
                 )
-
-                st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.warning("No hay registros de plan de pagos programado.")
 
