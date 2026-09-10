@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import time
 
 # =========================================================
 # CONFIGURACIÓN Y RECURSOS
@@ -44,23 +43,26 @@ def limpiar_numero(valor):
         return 0.0
 
 
-def normalizar_texto(serie: pd.Series) -> pd.Series:
-    """Limpia caracteres invisibles, espacios y convierte a minúsculas."""
-    return (
+def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
+    """
+    Limpia caracteres invisibles, espacios y sufijos innecesarios.
+    Si minusculas=True convierte a minúsculas (útil para usuarios).
+    Si minusculas=False mantiene mayúsculas/minúsculas originales (útil para contraseñas).
+    """
+    res = (
         serie.fillna("")
         .astype(str)
         .str.replace(r'\xa0', '', regex=True)
         .str.replace(r"\.0$", "", regex=True)
         .str.strip()
-        .str.lower()
     )
+    return res.str.lower() if minusculas else res
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     """Carga y limpia los encabezados de una pestaña de Google Sheets con caché de 5 minutos."""
-    timestamp = int(time.time() / 60)  # Actualiza la URL cada minuto si expira la caché
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={timestamp}"
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
     
     df = pd.read_csv(url, dtype=str)
     df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
@@ -90,7 +92,7 @@ if not st.session_state["autenticado"]:
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
             user_input = st.text_input("Usuario").strip().lower()
-            pass_input = st.text_input("Contraseña", type="password").strip()
+            pass_input = st.text_input("Contraseña", type="password").strip()  # Mantiene mayúsculas/minúsculas
             submit = st.form_submit_button("Ingresar a mi Fondo", use_container_width=True)
 
             if submit:
@@ -105,8 +107,10 @@ if not st.session_state["autenticado"]:
                                 st.error("❌ Estructura de tabla no válida. Faltan columnas 'usuario' o 'contrasena'.")
                                 st.warning(f"Columnas detectadas: {list(df_users.columns)}")
                             else:
-                                df_users["usuario"] = normalizar_texto(df_users["usuario"])
-                                df_users["contrasena"] = normalizar_texto(df_users["contrasena"])
+                                # PASO 2 CORREGIDO:
+                                # Normaliza el usuario a minúsculas y preserva las mayúsculas/minúsculas de la contraseña
+                                df_users["usuario"] = normalizar_texto(df_users["usuario"], minusculas=True)
+                                df_users["contrasena"] = normalizar_texto(df_users["contrasena"], minusculas=False)
 
                                 valido = df_users[
                                     (df_users["usuario"] == user_input) & 
