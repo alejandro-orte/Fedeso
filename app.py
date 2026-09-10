@@ -24,24 +24,14 @@ st.markdown("""
         background: linear-gradient(135deg, #0d0722 0%, #170e38 50%, #1f1147 100%) !important; 
     }
     
-    /* Ocultar barra lateral si se desea o estilizarla */
+    /* Barra lateral */
     [data-testid="stSidebar"] {
         background-color: #120a2e !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    /* Ocultar elementos nativos innecesarios de Streamlit */
+    /* Ocultar elementos nativos de Streamlit */
     #MainMenu, header, footer {visibility: hidden;}
-
-    /* Contenedor Header Superior */
-    .nav-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px 0px 20px 0px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        margin-bottom: 25px;
-    }
 
     /* Título principal centrado */
     .dashboard-title {
@@ -55,7 +45,7 @@ st.markdown("""
         text-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
 
-    /* Tarjetas blancas estilo Softr */
+    /* Tarjetas blancas estilo Softr / Dashboard */
     .softr-card {
         background-color: #ffffff;
         border-radius: 20px;
@@ -96,8 +86,8 @@ st.markdown("""
         border: 1px solid #e2e8f0;
     }
 
-    /* Cuadrícula de métricas */
-    .metrics-grid {
+    /* Cuadrícula de métricas en 3 columnas */
+    .metrics-grid-3 {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 22px 35px;
@@ -129,7 +119,7 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Estilos de la tarjeta contenedor de la tabla */
+    /* Estilos del contenedor de la tabla */
     .table-container-card {
         background-color: #ffffff;
         border-radius: 20px;
@@ -138,11 +128,15 @@ st.markdown("""
         margin-bottom: 25px;
     }
 
-    /* Estilos de Streamlit DataFrame */
+    /* Estilos para Dataframe y Barra de Progreso */
     div[data-testid="stDataFrame"] {
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
+    }
+
+    .stProgress > div > div > div > div {
+        background-color: #2563eb !important;
     }
 
     /* Formulario de Login */
@@ -281,6 +275,55 @@ else:
             df_resumen = cargar_pestana("Resumen")
             df_amort = cargar_pestana("Amortizacion")
 
+            # Variables de datos de amortización / avance de pagos
+            num_pagadas = 0
+            total_cuotas = 0
+            estado_proxima_str = "N/A"
+            saldo_pendiente_est = 0.0
+            porcentaje_progreso = 0.0
+            amort_user = pd.DataFrame()
+
+            if "usuario" in df_amort.columns:
+                df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
+                amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
+
+                if not amort_user.empty:
+                    columnas_num = ["intereses", "capital", "saldo"]
+                    for col in columnas_num:
+                        if col in amort_user.columns:
+                            amort_user[col] = amort_user[col].apply(limpiar_numero)
+
+                    if "estado" not in amort_user.columns:
+                        amort_user["estado"] = "Pendiente"
+                    else:
+                        amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
+
+                    # Excluir la cuota 0 (desembolso inicial) para los cálculos
+                    amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"]
+                    total_cuotas = len(amort_cuotas)
+
+                    cuotas_pagadas_df = amort_cuotas[
+                        amort_cuotas["estado"].str.lower().isin(["pagado", "al dia", "al día"])
+                    ]
+                    num_pagadas = len(cuotas_pagadas_df)
+
+                    # Próxima cuota a pagar
+                    proxima_cuota = amort_cuotas[
+                        ~amort_cuotas["estado"].str.lower().isin(["pagado", "al dia", "al día"])
+                    ]
+                    if not proxima_cuota.empty:
+                        mes_actual = proxima_cuota.iloc[0].get("mes_año", "N/A")
+                        num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
+                        estado_proxima_str = f"Cuota #{num_cuota_actual} ({mes_actual})"
+                        saldo_pendiente_est = proxima_cuota.iloc[0].get("saldo", 0.0)
+                    else:
+                        estado_proxima_str = "🎉 Completado"
+                        saldo_pendiente_est = 0.0
+
+                    if total_cuotas > 0:
+                        porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
+
+            # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
             if "usuario" in df_resumen.columns:
                 df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"])
                 resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
@@ -290,17 +333,15 @@ else:
                     plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
                     tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                     cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
-
                     tasa_fmt = f"{tasa*100:.2f}%" if tasa < 1 else f"{tasa:.2f}%"
 
-                    # TARJETA DE RESUMEN DE PRÉSTAMO
                     st.markdown(f"""
                     <div class="softr-card">
                         <div class="card-header">
                             <span class="card-title">📊 RESUMEN DE PRÉSTAMO</span>
                             <span class="card-user-badge">👤 {st.session_state['nombre']}</span>
                         </div>
-                        <div class="metrics-grid">
+                        <div class="metrics-grid-3">
                             <div>
                                 <div class="metric-item-label">Monto del Préstamo:</div>
                                 <div class="metric-item-val">${monto:,.0f}</div>
@@ -328,72 +369,82 @@ else:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                else:
-                    st.info("No se encontró información de resumen para este usuario.")
 
-            # --- TABLA DE PLAN DE PAGOS Y DETALLES DE AMORTIZACIÓN ---
-            if "usuario" in df_amort.columns:
-                df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
-                amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
+            # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO ---
+            st.markdown(f"""
+            <div class="softr-card">
+                <div class="card-header">
+                    <span class="card-title">📊 ESTADO DE PAGOS Y PROGRESO</span>
+                </div>
+                <div class="metrics-grid-3" style="margin-bottom: 20px;">
+                    <div>
+                        <div class="metric-item-label">Progreso de Pago</div>
+                        <div class="metric-item-val">{num_pagadas} de {total_cuotas} cuotas</div>
+                    </div>
+                    <div>
+                        <div class="metric-item-label">Próximo Mes a Pagar</div>
+                        <div class="metric-item-val">{estado_proxima_str}</div>
+                    </div>
+                    <div>
+                        <div class="metric-item-label">Saldo Pendiente Estimado</div>
+                        <div class="metric-item-val">${saldo_pendiente_est:,.0f}</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                if not amort_user.empty:
-                    columnas_num = ["intereses", "capital", "saldo"]
-                    for col in columnas_num:
-                        if col in amort_user.columns:
-                            amort_user[col] = amort_user[col].apply(limpiar_numero)
+            # Barra de avance
+            st.caption(f"Progreso actual: **{porcentaje_progreso*100:.1f}% pagado**")
+            st.progress(porcentaje_progreso)
 
-                    # Si no existe la columna 'estado' en la hoja de cálculo, la creamos con valor por defecto
-                    if "estado" not in amort_user.columns:
-                        amort_user["estado"] = "Al día"
-                    else:
-                        amort_user["estado"] = amort_user["estado"].fillna("Al día").astype(str).str.strip()
+            st.write("")
 
-                    # Contenedor blanco para la tabla de amortización
-                    st.markdown("""
-                    <div class="table-container-card">
-                        <div class="card-header">
-                            <span class="card-title">📅 PLAN DE PAGOS (AMORTIZACIONES)</span>
-                        </div>
-                    """, unsafe_allow_html=True)
+            # --- TARJETA 3: TABLA PLAN DE PAGOS (AMORTIZACIÓN) ---
+            if not amort_user.empty:
+                st.markdown("""
+                <div class="table-container-card">
+                    <div class="card-header">
+                        <span class="card-title">📅 PLAN DE PAGOS (AMORTIZACIONES)</span>
+                    </div>
+                """, unsafe_allow_html=True)
 
-                    cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
-                    tabla_mostrar = amort_user[cols_existentes].copy()
+                cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
+                tabla_mostrar = amort_user[cols_existentes].copy()
 
-                    # Renombrar columnas para la visualización
-                    renombrar = {
-                        "cuota_num": "Nº",
-                        "mes_año": "Mes/Año",
-                        "estado": "Estado de Pago",
-                        "intereses": "Intereses",
-                        "capital": "Capital",
-                        "saldo": "Saldo"
-                    }
-                    tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
+                renombrar = {
+                    "cuota_num": "Nº",
+                    "mes_año": "Mes/Año",
+                    "estado": "Estado de Pago",
+                    "intereses": "Intereses",
+                    "capital": "Capital",
+                    "saldo": "Saldo"
+                }
+                tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
 
-                    # Formatear la columna de estado con distintivos
-                    def formato_estado_badge(val):
-                        val_str = str(val).lower()
-                        if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
-                            return "🟢 Al día"
-                        elif "pendiente" in val_str or "curso" in val_str:
-                            return "🟡 Pendiente"
-                        return val
+                def formato_estado_badge(val):
+                    val_str = str(val).lower()
+                    if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
+                        return "🟢 Pagado"
+                    elif "pendiente" in val_str or "curso" in val_str:
+                        return "🟡 Pendiente"
+                    return val
 
-                    if "Estado de Pago" in tabla_mostrar.columns:
-                        tabla_mostrar["Estado de Pago"] = tabla_mostrar["Estado de Pago"].apply(formato_estado_badge)
+                if "Estado de Pago" in tabla_mostrar.columns:
+                    tabla_mostrar["Estado de Pago"] = tabla_mostrar["Estado de Pago"].apply(formato_estado_badge)
 
-                    st.dataframe(
-                        tabla_mostrar.style.format({
-                            "Intereses": "${:,.0f}",
-                            "Capital": "${:,.0f}",
-                            "Saldo": "${:,.0f}"
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                st.dataframe(
+                    tabla_mostrar.style.format({
+                        "Intereses": "${:,.0f}",
+                        "Capital": "${:,.0f}",
+                        "Saldo": "${:,.0f}"
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
-                    st.markdown("</div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No hay registros de plan de pagos programado.")
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.warning("No hay registros de plan de pagos programado.")
+
     except Exception as e:
         st.error(f"Error al procesar la información: {e}")
