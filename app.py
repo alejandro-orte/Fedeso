@@ -9,26 +9,106 @@ FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlf
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
 st.set_page_config(
-    page_title="FEDESO - Fondo Empresarial",
+    page_title="FEDESO - Mi Estado de Cuenta",
     page_icon="💰",
     layout="wide"
 )
 
-# Estilos CSS
+# =========================================================
+# ESTILOS CSS PERSONALIZADOS (ESTILO DASHBOARD SOFTR)
+# =========================================================
 st.markdown("""
     <style>
-    .stApp { background-color: #f8fafc; }
-    div[data-testid="metric-container"] {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        padding: 18px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    /* Fondo oscuro de la aplicación */
+    .stApp { 
+        background: linear-gradient(135deg, #0e0720 0%, #1b123a 100%) !important; 
     }
-    div[data-testid="stMetricValue"] { color: #1f4e78 !important; font-weight: 700 !important; }
-    .stButton>button, .stLinkButton>a { border-radius: 8px !important; font-weight: 600 !important; }
-    h1, h2, h3 { color: #0f172a !important; font-family: 'Segoe UI', Roboto, sans-serif; }
-    div[data-testid="stForm"] { background-color: #ffffff; border-radius: 12px; padding: 25px; border: 1px solid #e2e8f0; }
+    
+    /* Ocultar barra lateral por defecto si se prefiere dashboard completo */
+    [data-testid="stSidebar"] {
+        background-color: #120b2d !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Ocultar elementos nativos innecesarios de Streamlit */
+    #MainMenu, header, footer {visibility: hidden;}
+
+    /* Título principal centrado estilo Softr */
+    .dashboard-title {
+        color: #ffffff;
+        font-family: 'Inter', sans-serif;
+        text-align: center;
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 25px;
+    }
+
+    /* Tarjetas blancas estilo Softr */
+    .softr-card {
+        background-color: #ffffff;
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        margin-bottom: 25px;
+        color: #0f172a;
+    }
+
+    /* Encabezado de tarjeta */
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f1f5f9;
+        padding-bottom: 12px;
+        margin-bottom: 20px;
+    }
+
+    .card-title {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #0f172a;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .card-user-email {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    /* Cuadrícula de métricas en la tarjeta */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px 30px;
+    }
+
+    .metric-item-label {
+        font-size: 0.85rem;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+
+    .metric-item-val {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #000000;
+    }
+
+    /* Ajustes para la tabla en Streamlit */
+    div[data-testid="stDataFrame"] {
+        background-color: #ffffff;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    
+    div[data-testid="stForm"] {
+        background-color: #ffffff;
+        border-radius: 18px;
+        padding: 30px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -55,7 +135,6 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
 
 
 def cargar_usuarios() -> pd.DataFrame:
-    """Carga los usuarios en tiempo real sin caché."""
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Usuarios"
     df = pd.read_csv(url, dtype=str)
     df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
@@ -64,7 +143,6 @@ def cargar_usuarios() -> pd.DataFrame:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
-    """Carga las pestañas de Resumen y Amortizacion usando caché de 5 minutos."""
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
     df = pd.read_csv(url, dtype=str)
     df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
@@ -84,12 +162,11 @@ if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
 
     with col_b:
-        st.image(LOGO_URL, width=90)
-        st.title("FEDESO")
-        st.caption("Fondo Empresarial de Solidaridad")
-
-        st.link_button("📝 Ir al Simulador de Crédito", FORM_URL, use_container_width=True)
         st.write("")
+        st.write("")
+        st.image(LOGO_URL, width=80)
+        st.markdown("<h2 style='color: white;'>FEDESO</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #cbd5e1;'>Fondo Empresarial de Solidaridad</p>", unsafe_allow_html=True)
 
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
@@ -106,8 +183,7 @@ if not st.session_state["autenticado"]:
                             df_users = cargar_usuarios()
 
                             if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
-                                st.error("❌ Estructura de tabla no válida. Faltan columnas 'usuario' o 'contrasena'.")
-                                st.warning(f"Columnas detectadas: {list(df_users.columns)}")
+                                st.error("❌ Estructura de tabla no válida.")
                             else:
                                 df_users["usuario"] = normalizar_texto(df_users["usuario"], minusculas=True)
                                 df_users["contrasena"] = normalizar_texto(df_users["contrasena"], minusculas=False)
@@ -127,33 +203,38 @@ if not st.session_state["autenticado"]:
                                 else:
                                     st.error("Usuario o contraseña incorrectos.")
                         except Exception as e:
-                            st.error(f"Error al conectar con el servidor de datos: {e}")
+                            st.error(f"Error al conectar: {e}")
 
 # =========================================================
-# 2. PANTALLA INTERNA DEL USUARIO
+# 2. PANTALLA INTERNA (DASHBOARD OSCURO ESTILO SOFTR)
 # =========================================================
 else:
-    st.sidebar.image(LOGO_URL, width=80)
-    st.sidebar.markdown(f"### 👤 {st.session_state['nombre']}")
-    st.sidebar.markdown("---")
+    # --- BARRA SUPERIOR DE NAVEGACIÓN ---
+    header_col1, header_col2 = st.columns([3, 1])
+    with header_col1:
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <img src="{LOGO_URL}" width="40"/>
+                <span style="color: white; font-weight: 800; font-size: 1.2rem;">FEDESO</span>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+    with header_col2:
+        if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            st.session_state["autenticado"] = False
+            st.session_state["usuario"] = ""
+            st.session_state["nombre"] = ""
+            st.rerun()
 
-    st.sidebar.link_button("📝 Simulador de Crédito", FORM_URL, use_container_width=True)
-    st.sidebar.write("")
-
-    if st.sidebar.button("Cerrar Sesión", use_container_width=True):
-        st.session_state["autenticado"] = False
-        st.session_state["usuario"] = ""
-        st.session_state["nombre"] = ""
-        st.rerun()
-
-    st.title("Resumen de Crédito")
-    st.caption(f"Bienvenido(a), **{st.session_state['nombre']}**")
+    # --- TÍTULO PRINCIPAL ---
+    st.markdown('<div class="dashboard-title">Mi Estado de Cuenta FEDESO</div>', unsafe_allow_html=True)
 
     usuario_key = st.session_state["usuario"]
 
     try:
-        with st.spinner("Cargando tu información..."):
-            # --- SECCIÓN RESUMEN Y ESTADO GENERAL ---
+        with st.spinner("Cargando tu estado de cuenta..."):
             df_resumen = cargar_pestana("Resumen")
             df_amort = cargar_pestana("Amortizacion")
 
@@ -167,96 +248,91 @@ else:
                     tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                     cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
 
-                    # Fila superior de información general
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Monto Aprobado", f"${monto:,.0f}")
-                    col2.metric("Plazo Total", f"{plazo} meses")
-                    col3.metric("Tasa de Interés", f"{tasa*100:.2f}% MV" if tasa < 1 else f"{tasa:.2f}% MV")
-                    col4.metric("Cuota Mensual", f"${cuota:,.0f}")
+                    # Tasa formateada
+                    tasa_fmt = f"{tasa*100:.2f}%" if tasa < 1 else f"{tasa:.2f}%"
+
+                    # TARJETA BLANCA DE RESUMEN (REPLICANDO LA IMAGEN)
+                    st.markdown(f"""
+                    <div class="softr-card">
+                        <div class="card-header">
+                            <span class="card-title">RESUMEN DE PRÉSTAMO</span>
+                            <span class="card-user-email">👤 {st.session_state['nombre']}</span>
+                        </div>
+                        <div class="metrics-grid">
+                            <div>
+                                <div class="metric-item-label">Monto del Préstamo:</div>
+                                <div class="metric-item-val">${monto:,.0f}</div>
+                            </div>
+                            <div>
+                                <div class="metric-item-label">Plazo (Meses):</div>
+                                <div class="metric-item-val">{plazo}</div>
+                            </div>
+                            <div>
+                                <div class="metric-item-label">Tasa M.V.:</div>
+                                <div class="metric-item-val">{tasa_fmt}</div>
+                            </div>
+                            <div>
+                                <div class="metric-item-label">Cuota Mensual:</div>
+                                <div class="metric-item-val">${cuota:,.0f}</div>
+                            </div>
+                            <div>
+                                <div class="metric-item-label">Tasa Anual Estimada:</div>
+                                <div class="metric-item-val">{(tasa*12)*100 if tasa < 1 else tasa*12:.2f}%</div>
+                            </div>
+                            <div>
+                                <div class="metric-item-label">Estado de Cuenta:</div>
+                                <div class="metric-item-val" style="color: #16a34a;">Al día</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.info("No se encontró información de resumen para este usuario.")
+                    st.info("No se encontró resumen para este usuario.")
 
-            st.markdown("---")
-
-            # --- SECCIÓN AMORTIZACIÓN Y PROGRESO DE PAGOS ---
+            # --- TABLA DE AMORTIZACIÓN (PLAN DE PAGOS) ---
             if "usuario" in df_amort.columns:
                 df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
                 amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
 
                 if not amort_user.empty:
-                    # Limpieza numérica de la tabla
+                    st.markdown("""
+                    <div style="background-color: #ffffff; border-radius: 18px 18px 0 0; padding: 18px 24px; margin-top: 10px;">
+                        <span style="font-size: 1.1rem; font-weight: 800; color: #0f172a;">📅 PLAN DE PAGOS (AMORTIZACIONES)</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
                     columnas_num = ["intereses", "capital", "saldo"]
                     for col in columnas_num:
                         if col in amort_user.columns:
                             amort_user[col] = amort_user[col].apply(limpiar_numero)
 
-                    # Si no existe la columna 'estado' en el Sheet, la creamos vacía por defecto
-                    if "estado" not in amort_user.columns:
-                        amort_user["estado"] = "Pendiente"
-                    else:
-                        amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
-
-                    # Excluir la cuota 0 (desembolso inicial) para los cálculos de progreso
-                    amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"]
-                    total_cuotas = len(amort_cuotas)
-
-                    # Cálculo de cuotas pagadas
-                    cuotas_pagadas_df = amort_cuotas[amort_cuotas["estado"].str.lower() == "pagado"]
-                    num_pagadas = len(cuotas_pagadas_df)
-
-                    # Próxima cuota a pagar / Mes actual
-                    proxima_cuota = amort_cuotas[amort_cuotas["estado"].str.lower() != "pagado"]
-                    if not proxima_cuota.empty:
-                        mes_actual = proxima_cuota.iloc[0].get("mes_año", "N/A")
-                        num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
-                        estado_actual_str = f"Cuota #{num_cuota_actual} ({mes_actual})"
-                    else:
-                        estado_actual_str = "🎉 ¡Crédito Finalizado!"
-
-                    # Métricas de avance
-                    st.subheader("📊 Estado de Pagos y Progreso")
-                    m_col1, m_col2, m_col3 = st.columns(3)
-                    m_col1.metric("Progreso de Pago", f"{num_pagadas} de {total_cuotas} cuotas")
-                    m_col2.metric("Próximo Mes a Pagar", estado_actual_str)
-                    
-                    # Saldo actual pendiente
-                    saldo_actual = amort_user["saldo"].iloc[-1] if not cuotas_pagadas_df.empty else monto
-                    if not proxima_cuota.empty and "saldo" in proxima_cuota.columns:
-                        saldo_actual = proxima_cuota.iloc[0]["saldo"]
-                    m_col3.metric("Saldo Pendiente Estimado", f"${saldo_actual:,.0f}")
-
-                    # Barra visual de progreso
-                    porcentaje_progreso = min(1.0, num_pagadas / total_cuotas) if total_cuotas > 0 else 0.0
-                    st.progress(porcentaje_progreso, text=f"Progreso actual: {porcentaje_progreso*100:.1f}% pagado")
-
-                    st.markdown("---")
-
-                    # --- TABLA DE PLAN DE PAGOS ---
-                    st.subheader("📋 Plan de Pagos Programado")
+                    if "estado" in amort_user.columns:
+                        amort_user["estado"] = amort_user["estado"].fillna("Pendiente")
 
                     cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
                     tabla_mostrar = amort_user[cols_existentes].copy()
 
-                    # Dar formato visual al estado con emojis
-                    def formatear_estado(val):
-                        val_str = str(val).lower()
-                        if "pagad" in val_str:
-                            return "🟢 Pagado"
-                        elif "curso" in val_str or "pendiente" in val_str:
-                            return "🟡 Pendiente"
-                        return val
-
-                    if "estado" in tabla_mostrar.columns:
-                        tabla_mostrar["estado"] = tabla_mostrar["estado"].apply(formatear_estado)
+                    # Renombrar columnas para calcar la imagen
+                    renombrar = {
+                        "cuota_num": "Nº",
+                        "mes_año": "Mes/Año",
+                        "estado": "Estado",
+                        "intereses": "Intereses",
+                        "capital": "Capital",
+                        "saldo": "Saldo"
+                    }
+                    tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
 
                     st.dataframe(
                         tabla_mostrar.style.format({
-                            col: "${:,.0f}" for col in columnas_num if col in tabla_mostrar.columns
+                            "Intereses": "${:,.0f}",
+                            "Capital": "${:,.0f}",
+                            "Saldo": "${:,.0f}"
                         }),
                         use_container_width=True,
                         hide_index=True
                     )
                 else:
-                    st.warning("No hay registros de plan de pagos programado para este usuario.")
+                    st.warning("No hay registros de plan de pagos programado.")
     except Exception as e:
-        st.error(f"Error al procesar la información del usuario: {e}")
+        st.error(f"Error al procesar la información: {e}")
