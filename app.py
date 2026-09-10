@@ -251,7 +251,7 @@ def limpiar_numero(valor):
 
 
 def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
-    """Limpia caracteres invisibles y elimina TODOS los espacios internos/externos."""
+    """Limpia caracteres invisibles, borra .0 al final y elimina espacios."""
     res = (
         serie.fillna("")
         .astype(str)
@@ -288,7 +288,7 @@ if "pantalla" not in st.session_state:
     st.session_state["pantalla"] = "dashboard"
 
 # =========================================================
-# 1. PANTALLA DE LOGIN CON DEPURACIÓN INTEGRADA
+# 1. PANTALLA DE LOGIN CON CORRECCIÓN DE CONTRASEÑA
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -317,7 +317,7 @@ if not st.session_state["autenticado"]:
                 else:
                     with st.spinner("Verificando credenciales..."):
                         try:
-                            # Forzar la limpieza del caché para cargar datos actualizados
+                            # Forzar limpieza del caché
                             cargar_usuarios.clear()
                             df_users = cargar_usuarios()
 
@@ -327,8 +327,9 @@ if not st.session_state["autenticado"]:
                             if not col_user or not col_pass:
                                 st.error(f"❌ Estructura no válida. Columnas detectadas: {list(df_users.columns)}")
                             else:
-                                df_users["u_clean"] = df_users[col_user].astype(str).str.replace(r'\s+', '', regex=True).str.lower()
-                                df_users["p_clean"] = df_users[col_pass].astype(str).str.replace(r'\s+', '', regex=True)
+                                # Aplicar normalización a usuarios y contraseñas (elimina decimales .0)
+                                df_users["u_clean"] = normalizar_texto(df_users[col_user], minusculas=True)
+                                df_users["p_clean"] = normalizar_texto(df_users[col_pass], minusculas=False)
 
                                 input_u = user_input.replace(" ", "").lower()
                                 input_p = pass_input.replace(" ", "")
@@ -347,8 +348,8 @@ if not st.session_state["autenticado"]:
                                     st.rerun()
                                 else:
                                     st.error("Usuario o contraseña incorrectos.")
-                                    # DEPURACIÓN EN PANTALLA
-                                    st.info(f"💡 Usuarios registrados actualmente en Google Sheets: {df_users['u_clean'].tolist()}")
+                                    # Muestra información de depuración si falla
+                                    st.info(f"💡 Info DB - Usuarios: {df_users['u_clean'].tolist()} | Claves limpiadas: {df_users['p_clean'].tolist()}")
                         except Exception as e:
                             st.error(f"Error al conectar con la base de datos: {e}")
 
