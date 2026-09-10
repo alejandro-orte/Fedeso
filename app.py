@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import base64
+import os
 
 # =========================================================
 # CONFIGURACIÓN Y RECURSOS
@@ -7,8 +9,17 @@ import pandas as pd
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Logo oficial FEDESO (Puedes reemplazar esta URL por un archivo local como 'logo.png')
-LOGO_URL = "https://raw.githubusercontent.com/alejandro-orte/Fedeso/main/fedeso%20imagen%20web.png"
+# Función para convertir la imagen local a base64 (necesario para HTML interno)
+def get_image_base64(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode()
+            return f"data:image/png;base64,{encoded}"
+    # Fallback si no encuentra el archivo local
+    return "https://raw.githubusercontent.com/alejandro-orte/Fedeso/main/fedeso%20imagen%20web.png"
+
+# Asignar la imagen
+LOGO_URL = get_image_base64("fedeso imagen web.png")
 
 st.set_page_config(
     page_title="FEDESO - Mi Estado de Cuenta",
@@ -40,7 +51,7 @@ st.markdown("""
         color: #ffffff;
         font-family: 'Inter', -apple-system, sans-serif;
         text-align: center;
-        font-size: 2.1rem;
+        font-size: 2.2rem;
         font-weight: 800;
         letter-spacing: -0.5px;
         margin-bottom: 25px;
@@ -149,6 +160,20 @@ st.markdown("""
         padding: 35px;
         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
     }
+
+    /* Estilo para contenedor centrado del logo en login */
+    .login-logo-container {
+        text-align: center;
+        margin-bottom: 15px;
+    }
+
+    .login-logo-container img {
+        width: 240px;
+        height: 240px;
+        object-fit: contain;
+        border-radius: 50%;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -208,10 +233,15 @@ if not st.session_state["autenticado"]:
     with col_b:
         st.write("")
         st.write("")
-        # Imagen de marca en la pantalla de inicio de sesión
-        st.image(LOGO_URL, width=160)
-        st.markdown("<h2 style='color: white; font-weight: 800; margin-top: 10px;'>FEDESO</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #cbd5e1; margin-bottom: 20px;'>Fondo Empresarial de Solidaridad</p>", unsafe_allow_html=True)
+        # Imagen principal en el login (240px de tamaño)
+        st.markdown(
+            f"""
+            <div class="login-logo-container">
+                <img src="{LOGO_URL}"/>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
@@ -259,17 +289,19 @@ else:
     with header_col1:
         st.markdown(
             f"""
-            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 15px;">
-                <img src="{LOGO_URL}" style="width: 65px; height: 65px; object-fit: cover; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2);"/>
+            <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 15px;">
+                <img src="{LOGO_URL}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.3); box-shadow: 0 4px 15px rgba(0,0,0,0.4);"/>
                 <div>
-                    <span style="color: white; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; display: block; line-height: 1;">FEDESO</span>
-                    <span style="color: #cbd5e1; font-size: 0.85rem;">Fondo Empresarial de Solidaridad</span>
+                    <span style="color: white; font-weight: 800; font-size: 2.2rem; letter-spacing: 0.5px; display: block; line-height: 1;">FEDESO</span>
+                    <span style="color: #cbd5e1; font-size: 1rem; font-weight: 500;">Fondo Empresarial de Solidaridad</span>
                 </div>
             </div>
             """, 
             unsafe_allow_html=True
         )
     with header_col2:
+        st.write("")
+        st.write("")
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
             st.session_state["autenticado"] = False
             st.session_state["usuario"] = ""
