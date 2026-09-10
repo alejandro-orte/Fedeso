@@ -14,8 +14,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-SHEET_ID = "1SvdJ5Y_Rz9oH-fInaV-LIn1yMvdM2wN3_qBwL3P3-k8" # ID de tu Google Sheet
-TASA_MENSUAL_DEFAULT = 0.007 # 0.70% M.V.
+SHEET_ID = "1SvdJ5Y_Rz9oH-fInaV-LIn1yMvdM2wN3_qBwL3P3-k8"  # ID de tu Google Sheet
+TASA_MENSUAL_DEFAULT = 0.007  # 0.70% M.V.
 
 # =========================================================
 # ESTILOS CSS PERSONALIZADOS
@@ -132,10 +132,8 @@ def limpiar_numero(val) -> float:
     val_str = str(val).strip()
     if not val_str:
         return 0.0
-    # Remover símbolos de moneda y espacios
     val_str = re.sub(r"[^\d,\.-]", "", val_str)
     
-    # Manejo de separadores
     if "," in val_str and "." in val_str:
         if val_str.rfind(".") > val_str.rfind(","):
             val_str = val_str.replace(",", "")
@@ -311,19 +309,10 @@ else:
                     if not resumen_user.empty:
                         monto = limpiar_numero(resumen_user["monto"].iloc[0])
                         plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
-                        tasa_raw = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
+                        tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                         cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
 
-                        # AJUSTE AUTOMÁTICO DE TASA (0.007 -> 0.70%)
-                        if tasa_raw >= 1.0:
-                            tasa = tasa_raw / 1000
-                        elif tasa_raw >= 0.05:
-                            tasa = tasa_raw / 100
-                        else:
-                            tasa = tasa_raw
-
-                        tasa_fmt = f"{tasa * 100:.2f}%"
-                        tasa_anual_fmt = f"{(tasa * 12) * 100:.2f}%"
+                        tasa_fmt = f"{tasa*100:.2f}%"
 
                         st.markdown(f"""
                         <div class="softr-card">
@@ -350,7 +339,7 @@ else:
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Tasa Anual Estimada:</div>
-                                    <div class="metric-item-val">{tasa_anual_fmt}</div>
+                                    <div class="metric-item-val">{(tasa*12)*100:.2f}%</div>
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Estado del Crédito:</div>
@@ -477,7 +466,6 @@ else:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Cálculo matemático exacto de la cuota
         i = TASA_MENSUAL_DEFAULT
         n = plazo_sim
         P = monto_sim
