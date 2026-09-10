@@ -8,7 +8,7 @@ SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
 # Logo oficial FEDESO (Puedes reemplazar esta URL por un archivo local como 'logo.png')
-LOGO_URL = 'fedeso imagen web.png'
+LOGO_URL = 'C:\Users\usuario.optimacom\Downloads\fedeso imagen web.png'
 
 st.set_page_config(
     page_title="FEDESO - Mi Estado de Cuenta",
