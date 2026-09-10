@@ -9,16 +9,13 @@ import os
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Función para convertir la imagen local a base64 (necesario para HTML interno)
 def get_image_base64(file_path):
     if os.path.exists(file_path):
         with open(file_path, "rb") as image_file:
             encoded = base64.b64encode(image_file.read()).decode()
             return f"data:image/png;base64,{encoded}"
-    # Fallback si no encuentra el archivo local
     return "https://raw.githubusercontent.com/alejandro-orte/Fedeso/main/fedeso%20imagen%20web.png"
 
-# Asignar la imagen
 LOGO_URL = get_image_base64("fedeso imagen web.png")
 
 st.set_page_config(
@@ -28,7 +25,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS PERSONALIZADOS (ESTILO DASHBOARD MODERNO)
+# ESTILOS CSS PERSONALIZADOS
 # =========================================================
 st.markdown("""
     <style>
@@ -37,16 +34,13 @@ st.markdown("""
         background: linear-gradient(135deg, #0d0722 0%, #170e38 50%, #1f1147 100%) !important; 
     }
     
-    /* Barra lateral */
     [data-testid="stSidebar"] {
         background-color: #120a2e !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    /* Ocultar elementos nativos de Streamlit */
     #MainMenu, header, footer {visibility: hidden;}
 
-    /* Título principal centrado */
     .dashboard-title {
         color: #ffffff;
         font-family: 'Inter', -apple-system, sans-serif;
@@ -58,7 +52,7 @@ st.markdown("""
         text-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
 
-    /* Tarjetas blancas estilo Softr / Dashboard */
+    /* Tarjetas blancas principales */
     .softr-card {
         background-color: #ffffff;
         border-radius: 20px;
@@ -68,7 +62,6 @@ st.markdown("""
         color: #0f172a;
     }
 
-    /* Encabezado de la tarjeta */
     .card-header {
         display: flex;
         justify-content: space-between;
@@ -99,7 +92,6 @@ st.markdown("""
         border: 1px solid #e2e8f0;
     }
 
-    /* Cuadrícula de métricas en 3 columnas */
     .metrics-grid-3 {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -132,62 +124,52 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Estilos de la etiqueta de progreso legible */
-    .progress-label-box {
+    /* BARRA DE PROGRESO PERSONALIZADA INTEGRADORA */
+    .progress-section {
+        margin-top: 24px;
+        padding-top: 18px;
+        border-top: 1px solid #f1f5f9;
+    }
+
+    .progress-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background-color: #f8fafc;
-        padding: 10px 16px;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-        margin-top: 15px;
         margin-bottom: 10px;
     }
 
-    .progress-label-text {
-        color: #1e293b;
-        font-size: 1rem;
+    .progress-title-text {
+        font-size: 0.95rem;
         font-weight: 700;
+        color: #334155;
     }
 
-    .progress-percent-badge {
+    .progress-badge {
         background-color: #2563eb;
         color: #ffffff;
         font-weight: 800;
         padding: 4px 12px;
         border-radius: 20px;
-        font-size: 0.95rem;
+        font-size: 0.85rem;
     }
 
-    /* Personalización avanzada de la Barra de Progreso de Streamlit */
-    div[data-testid="stProgress"] {
-        height: 18px !important;
-    }
-
-    div[data-testid="stProgress"] > div {
-        background-color: #e2e8f0 !important;
-        border-radius: 12px !important;
+    .progress-track {
+        width: 100%;
+        height: 18px;
+        background-color: #e2e8f0;
+        border-radius: 10px;
         overflow: hidden;
-        height: 18px !important;
     }
 
-    div[data-testid="stProgress"] > div > div > div > div {
-        background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%) !important;
-        border-radius: 12px !important;
-        box-shadow: 0 0 10px rgba(37, 99, 235, 0.5);
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
+        border-radius: 10px;
+        transition: width 0.5s ease-in-out;
+        box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
     }
 
-    /* Estilos del contenedor de la tabla */
-    .table-container-card {
-        background-color: #ffffff;
-        border-radius: 20px;
-        padding: 24px;
-        box-shadow: 0 15px 35px rgba(0,0,0,0.35);
-        margin-bottom: 25px;
-    }
-
-    /* Estilos para Dataframe */
+    /* Tabla */
     div[data-testid="stDataFrame"] {
         border-radius: 12px;
         overflow: hidden;
@@ -195,7 +177,7 @@ st.markdown("""
         background-color: #ffffff;
     }
 
-    /* Formulario de Login */
+    /* Login */
     div[data-testid="stForm"] {
         background-color: #ffffff;
         border-radius: 20px;
@@ -259,7 +241,6 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     return df
 
 
-# Inicialización de estado de sesión
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario"] = ""
@@ -348,7 +329,6 @@ else:
             st.session_state["nombre"] = ""
             st.rerun()
 
-    # --- TÍTULO PRINCIPAL ---
     st.markdown('<div class="dashboard-title">Mi Estado de Cuenta FEDESO</div>', unsafe_allow_html=True)
 
     usuario_key = st.session_state["usuario"]
@@ -450,7 +430,8 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
 
-            # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO ---
+            # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO (BARRA INTEGRADA) ---
+            pct_val = porcentaje_progreso * 100
             st.markdown(f"""
             <div class="softr-card">
                 <div class="card-header">
@@ -470,15 +451,17 @@ else:
                         <div class="metric-item-val">${saldo_pendiente_est:,.0f}</div>
                     </div>
                 </div>
-                <div class="progress-label-box">
-                    <span class="progress-label-text">Progreso Actual de Amortización</span>
-                    <span class="progress-percent-badge">{porcentaje_progreso*100:.1f}% Pagado</span>
+                <div class="progress-section">
+                    <div class="progress-header">
+                        <span class="progress-title-text">Progreso Actual de Amortización</span>
+                        <span class="progress-badge">{pct_val:.1f}% Pagado</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" style="width: {pct_val:.1f}%;"></div>
+                    </div>
                 </div>
+            </div>
             """, unsafe_allow_html=True)
-
-            # Barra de avance integrada en la tarjeta
-            st.progress(porcentaje_progreso)
-            st.markdown('</div>', unsafe_allow_html=True)
 
             st.write("")
 
