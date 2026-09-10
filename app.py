@@ -12,7 +12,7 @@ SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
 # Tasa de interés mensual predeterminada para el simulador (Ej: 2.0% M.V.)
-TASA_MENSUAL_DEFAULT = 0.02 
+TASA_MENSUAL_DEFAULT = 0.07 
 
 def get_image_base64(file_path):
     if os.path.exists(file_path):
