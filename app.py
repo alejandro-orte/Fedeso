@@ -192,11 +192,6 @@ st.markdown("""
         height: 50px !important;
     }
 
-    div[data-testid="stNumberInput"] input:focus {
-        border-color: #2563eb !important;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
-    }
-
     div[data-testid="stDataFrame"] {
         border-radius: 16px;
         overflow: hidden;
@@ -256,21 +251,23 @@ def limpiar_numero(valor):
 
 
 def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
+    """Limpia caracteres invisibles y elimina TODOS los espacios internos/externos."""
     res = (
         serie.fillna("")
         .astype(str)
         .str.replace(r'\xa0', '', regex=True)
+        .str.replace(r'\s+', '', regex=True)
         .str.replace(r"\.0$", "", regex=True)
         .str.strip()
     )
     return res.str.lower() if minusculas else res
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=1, show_spinner=False)
 def cargar_usuarios() -> pd.DataFrame:
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Usuarios"
     df = pd.read_csv(url, dtype=str)
-    df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
+    df.columns = [str(col).replace('\xa0', '').strip().lower().replace(' ', '') for col in df.columns]
     return df
 
 
@@ -291,7 +288,7 @@ if "pantalla" not in st.session_state:
     st.session_state["pantalla"] = "dashboard"
 
 # =========================================================
-# 1. PANTALLA DE LOGIN
+# 1. PANTALLA DE LOGIN CON DEPURACIÓN INTEGRADA
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -310,7 +307,7 @@ if not st.session_state["autenticado"]:
 
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
-            user_input = st.text_input("Usuario").strip().lower()
+            user_input = st.text_input("Usuario").strip()
             pass_input = st.text_input("Contraseña", type="password").strip()
             submit = st.form_submit_button("Ingresar a mi Fondo", use_container_width=True)
 
@@ -320,30 +317,40 @@ if not st.session_state["autenticado"]:
                 else:
                     with st.spinner("Verificando credenciales..."):
                         try:
+                            # Forzar la limpieza del caché para cargar datos actualizados
+                            cargar_usuarios.clear()
                             df_users = cargar_usuarios()
 
-                            if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
-                                st.error("❌ Estructura de tabla no válida.")
+                            col_user = next((c for c in df_users.columns if "usuario" in c), None)
+                            col_pass = next((c for c in df_users.columns if "contra" in c), None)
+
+                            if not col_user or not col_pass:
+                                st.error(f"❌ Estructura no válida. Columnas detectadas: {list(df_users.columns)}")
                             else:
-                                df_users["usuario"] = normalizar_texto(df_users["usuario"], minusculas=True)
-                                df_users["contrasena"] = normalizar_texto(df_users["contrasena"], minusculas=False)
+                                df_users["u_clean"] = df_users[col_user].astype(str).str.replace(r'\s+', '', regex=True).str.lower()
+                                df_users["p_clean"] = df_users[col_pass].astype(str).str.replace(r'\s+', '', regex=True)
+
+                                input_u = user_input.replace(" ", "").lower()
+                                input_p = pass_input.replace(" ", "")
 
                                 valido = df_users[
-                                    (df_users["usuario"] == user_input) & 
-                                    (df_users["contrasena"] == pass_input)
+                                    (df_users["u_clean"] == input_u) & 
+                                    (df_users["p_clean"] == input_p)
                                 ]
 
                                 if not valido.empty:
                                     st.session_state["autenticado"] = True
-                                    st.session_state["usuario"] = user_input
+                                    st.session_state["usuario"] = input_u
                                     st.session_state["nombre"] = (
                                         valido["nombre"].iloc[0] if "nombre" in valido.columns else user_input
                                     )
                                     st.rerun()
                                 else:
                                     st.error("Usuario o contraseña incorrectos.")
+                                    # DEPURACIÓN EN PANTALLA
+                                    st.info(f"💡 Usuarios registrados actualmente en Google Sheets: {df_users['u_clean'].tolist()}")
                         except Exception as e:
-                            st.error(f"Error al conectar: {e}")
+                            st.error(f"Error al conectar con la base de datos: {e}")
 
 # =========================================================
 # 2. PANTALLA INTERNA
@@ -625,7 +632,6 @@ else:
         n = plazo_sim
         P = monto_sim
 
-        # Ajuste de cálculo para la simulación exacta del modelo original ($226.984)
         if monto_sim == 5000000 and plazo_sim == 24 and i == 0.007:
             cuota_sim = 226984
         else:
@@ -642,7 +648,6 @@ else:
                      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         fecha_fin_str = f"{meses_esp[fecha_fin.month - 1]} de {fecha_fin.year}"
 
-        # Resultado de la simulación
         st.markdown(f"""
         <div class="softr-card">
             <div class="card-header">
@@ -665,7 +670,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        # Tabla proyectada ajustada
         st.markdown('<div class="section-header-title">📅 PROYECCIÓN PASO A PASO</div>', unsafe_allow_html=True)
 
         saldo = float(P)
