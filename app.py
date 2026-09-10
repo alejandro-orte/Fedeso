@@ -44,11 +44,6 @@ def limpiar_numero(valor):
 
 
 def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
-    """
-    Limpia caracteres invisibles, espacios y sufijos innecesarios.
-    Si minusculas=True convierte a minúsculas (útil para usuarios).
-    Si minusculas=False mantiene mayúsculas/minúsculas originales (útil para contraseñas).
-    """
     res = (
         serie.fillna("")
         .astype(str)
@@ -59,11 +54,18 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
     return res.str.lower() if minusculas else res
 
 
+def cargar_usuarios() -> pd.DataFrame:
+    """Carga los usuarios en tiempo real sin caché."""
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Usuarios"
+    df = pd.read_csv(url, dtype=str)
+    df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
+    return df
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
-    """Carga y limpia los encabezados de una pestaña de Google Sheets con caché de 5 minutos."""
+    """Carga las pestañas de Resumen y Amortizacion usando caché de 5 minutos."""
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
-    
     df = pd.read_csv(url, dtype=str)
     df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
     return df
@@ -92,7 +94,7 @@ if not st.session_state["autenticado"]:
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
             user_input = st.text_input("Usuario").strip().lower()
-            pass_input = st.text_input("Contraseña", type="password").strip()  # Mantiene mayúsculas/minúsculas
+            pass_input = st.text_input("Contraseña", type="password").strip()
             submit = st.form_submit_button("Ingresar a mi Fondo", use_container_width=True)
 
             if submit:
@@ -101,14 +103,12 @@ if not st.session_state["autenticado"]:
                 else:
                     with st.spinner("Verificando credenciales..."):
                         try:
-                            df_users = cargar_pestana("Usuarios")
+                            df_users = cargar_usuarios()
 
                             if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
                                 st.error("❌ Estructura de tabla no válida. Faltan columnas 'usuario' o 'contrasena'.")
                                 st.warning(f"Columnas detectadas: {list(df_users.columns)}")
                             else:
-                                # PASO 2 CORREGIDO:
-                                # Normaliza el usuario a minúsculas y preserva las mayúsculas/minúsculas de la contraseña
                                 df_users["usuario"] = normalizar_texto(df_users["usuario"], minusculas=True)
                                 df_users["contrasena"] = normalizar_texto(df_users["contrasena"], minusculas=False)
 
@@ -153,8 +153,10 @@ else:
 
     try:
         with st.spinner("Cargando tu información..."):
-            # --- SECCIÓN RESUMEN ---
+            # --- SECCIÓN RESUMEN Y ESTADO GENERAL ---
             df_resumen = cargar_pestana("Resumen")
+            df_amort = cargar_pestana("Amortizacion")
+
             if "usuario" in df_resumen.columns:
                 df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"])
                 resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
@@ -165,6 +167,7 @@ else:
                     tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                     cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
 
+                    # Fila superior de información general
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("Monto Aprobado", f"${monto:,.0f}")
                     col2.metric("Plazo Total", f"{plazo} meses")
@@ -175,22 +178,76 @@ else:
 
             st.markdown("---")
 
-            # --- SECCIÓN AMORTIZACIÓN ---
-            df_amort = cargar_pestana("Amortizacion")
+            # --- SECCIÓN AMORTIZACIÓN Y PROGRESO DE PAGOS ---
             if "usuario" in df_amort.columns:
                 df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
                 amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
 
                 if not amort_user.empty:
-                    st.subheader("📋 Plan de Pagos Programado")
-
+                    # Limpieza numérica de la tabla
                     columnas_num = ["intereses", "capital", "saldo"]
                     for col in columnas_num:
                         if col in amort_user.columns:
                             amort_user[col] = amort_user[col].apply(limpiar_numero)
 
-                    cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo"] if c in amort_user.columns]
+                    # Si no existe la columna 'estado' en el Sheet, la creamos vacía por defecto
+                    if "estado" not in amort_user.columns:
+                        amort_user["estado"] = "Pendiente"
+                    else:
+                        amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
+
+                    # Excluir la cuota 0 (desembolso inicial) para los cálculos de progreso
+                    amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"]
+                    total_cuotas = len(amort_cuotas)
+
+                    # Cálculo de cuotas pagadas
+                    cuotas_pagadas_df = amort_cuotas[amort_cuotas["estado"].str.lower() == "pagado"]
+                    num_pagadas = len(cuotas_pagadas_df)
+
+                    # Próxima cuota a pagar / Mes actual
+                    proxima_cuota = amort_cuotas[amort_cuotas["estado"].str.lower() != "pagado"]
+                    if not proxima_cuota.empty:
+                        mes_actual = proxima_cuota.iloc[0].get("mes_año", "N/A")
+                        num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
+                        estado_actual_str = f"Cuota #{num_cuota_actual} ({mes_actual})"
+                    else:
+                        estado_actual_str = "🎉 ¡Crédito Finalizado!"
+
+                    # Métricas de avance
+                    st.subheader("📊 Estado de Pagos y Progreso")
+                    m_col1, m_col2, m_col3 = st.columns(3)
+                    m_col1.metric("Progreso de Pago", f"{num_pagadas} de {total_cuotas} cuotas")
+                    m_col2.metric("Próximo Mes a Pagar", estado_actual_str)
+                    
+                    # Saldo actual pendiente
+                    saldo_actual = amort_user["saldo"].iloc[-1] if not cuotas_pagadas_df.empty else monto
+                    if not proxima_cuota.empty and "saldo" in proxima_cuota.columns:
+                        saldo_actual = proxima_cuota.iloc[0]["saldo"]
+                    m_col3.metric("Saldo Pendiente Estimado", f"${saldo_actual:,.0f}")
+
+                    # Barra visual de progreso
+                    porcentaje_progreso = min(1.0, num_pagadas / total_cuotas) if total_cuotas > 0 else 0.0
+                    st.progress(porcentaje_progreso, text=f"Progreso actual: {porcentaje_progreso*100:.1f}% pagado")
+
+                    st.markdown("---")
+
+                    # --- TABLA DE PLAN DE PAGOS ---
+                    st.subheader("📋 Plan de Pagos Programado")
+
+                    cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
                     tabla_mostrar = amort_user[cols_existentes].copy()
+
+                    # Dar formato visual al estado con emojis
+                    def formatear_estado(val):
+                        val_str = str(val).lower()
+                        if "pagad" in val_str:
+                            return "🟢 Pagado"
+                        elif "curso" in val_str or "pendiente" in val_str:
+                            return "🟡 Pendiente"
+                        return val
+
+                    if "estado" in tabla_mostrar.columns:
+                        tabla_mostrar["estado"] = tabla_mostrar["estado"].apply(formatear_estado)
 
                     st.dataframe(
                         tabla_mostrar.style.format({
