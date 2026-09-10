@@ -33,24 +33,41 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
 def limpiar_numero(valor):
     if pd.isna(valor):
         return 0.0
     texto = str(valor).replace('$', '').replace(',', '').replace('%', '').strip()
     try:
         return float(texto)
-    except:
+    except ValueError:
         return 0.0
 
-def cargar_pestana(nombre_pestana):
-    # Petición directa a Google Sheets con parámetro para evitar caché y forzar todo como texto (dtype=str)
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={int(time.time())}"
-    df = pd.read_csv(url, dtype=str)
+
+def normalizar_texto(serie: pd.Series) -> pd.Series:
+    """Limpia caracteres invisibles, espacios y convierte a minúsculas."""
+    return (
+        serie.fillna("")
+        .astype(str)
+        .str.replace(r'\xa0', '', regex=True)
+        .str.replace(r"\.0$", "", regex=True)
+        .str.strip()
+        .str.lower()
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
+    """Carga y limpia los encabezados de una pestaña de Google Sheets con caché de 5 minutos."""
+    timestamp = int(time.time() / 60)  # Actualiza la URL cada minuto si expira la caché
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&nocache={timestamp}"
     
-    # Convierte encabezados a texto, elimina espacios invisibles y pasa a minúsculas
+    df = pd.read_csv(url, dtype=str)
     df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
     return df
 
+
+# Inicialización de estado de sesión
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario"] = ""
@@ -61,61 +78,52 @@ if "autenticado" not in st.session_state:
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
-    
+
     with col_b:
         st.image(LOGO_URL, width=90)
         st.title("FEDESO")
         st.caption("Fondo Empresarial de Solidaridad")
-        
+
         st.link_button("📝 Ir al Simulador de Crédito", FORM_URL, use_container_width=True)
         st.write("")
-        
+
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
             user_input = st.text_input("Usuario").strip().lower()
             pass_input = st.text_input("Contraseña", type="password").strip()
             submit = st.form_submit_button("Ingresar a mi Fondo", use_container_width=True)
-            
+
             if submit:
-                try:
-                    df_users = cargar_pestana("Usuarios")
-                      
-                    # Validación de existencia de columnas principales
-                    if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
-                        st.error("❌ No se encontraron las columnas 'usuario' o 'contrasena' en la pestaña Usuarios.")
-                        st.warning(f"Columnas leídas por la app: {list(df_users.columns)}")
-                    else:
-                        # Limpieza profunda de usuario (remueve \xa0, espacios invisibles y pasa a minúsculas)
-                        df_users["usuario"] = (
-                            df_users["usuario"]
-                            .fillna("")
-                            .astype(str)
-                            .str.replace(r'\xa0', '', regex=True)
-                            .str.strip()
-                            .str.lower()
-                        )
-                        
-                        # Limpieza de contraseña (remueve \xa0, espacios y posibles decimales .0)
-                        df_users["contrasena"] = (
-                            df_users["contrasena"]
-                            .fillna("")
-                            .astype(str)
-                            .str.replace(r'\xa0', '', regex=True)
-                            .str.replace(r"\.0$", "", regex=True)
-                            .str.strip()
-                        )
-                        
-                        valido = df_users[(df_users["usuario"] == user_input) & (df_users["contrasena"] == pass_input)]
-                        
-                        if not valido.empty:
-                            st.session_state["autenticado"] = True
-                            st.session_state["usuario"] = user_input
-                            st.session_state["nombre"] = valido["nombre"].iloc[0] if "nombre" in valido.columns else user_input
-                            st.rerun()
-                        else:
-                            st.error("Usuario o contraseña incorrectos.")
-                except Exception as e:
-                    st.error(f"Error al conectar con Google Sheets: {e}")
+                if not user_input or not pass_input:
+                    st.warning("Por favor ingrese usuario y contraseña.")
+                else:
+                    with st.spinner("Verificando credenciales..."):
+                        try:
+                            df_users = cargar_pestana("Usuarios")
+
+                            if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
+                                st.error("❌ Estructura de tabla no válida. Faltan columnas 'usuario' o 'contrasena'.")
+                                st.warning(f"Columnas detectadas: {list(df_users.columns)}")
+                            else:
+                                df_users["usuario"] = normalizar_texto(df_users["usuario"])
+                                df_users["contrasena"] = normalizar_texto(df_users["contrasena"])
+
+                                valido = df_users[
+                                    (df_users["usuario"] == user_input) & 
+                                    (df_users["contrasena"] == pass_input)
+                                ]
+
+                                if not valido.empty:
+                                    st.session_state["autenticado"] = True
+                                    st.session_state["usuario"] = user_input
+                                    st.session_state["nombre"] = (
+                                        valido["nombre"].iloc[0] if "nombre" in valido.columns else user_input
+                                    )
+                                    st.rerun()
+                                else:
+                                    st.error("Usuario o contraseña incorrectos.")
+                        except Exception as e:
+                            st.error(f"Error al conectar con el servidor de datos: {e}")
 
 # =========================================================
 # 2. PANTALLA INTERNA DEL USUARIO
@@ -124,10 +132,10 @@ else:
     st.sidebar.image(LOGO_URL, width=80)
     st.sidebar.markdown(f"### 👤 {st.session_state['nombre']}")
     st.sidebar.markdown("---")
-    
+
     st.sidebar.link_button("📝 Simulador de Crédito", FORM_URL, use_container_width=True)
     st.sidebar.write("")
-    
+
     if st.sidebar.button("Cerrar Sesión", use_container_width=True):
         st.session_state["autenticado"] = False
         st.session_state["usuario"] = ""
@@ -136,65 +144,58 @@ else:
 
     st.title("Resumen de Crédito")
     st.caption(f"Bienvenido(a), **{st.session_state['nombre']}**")
-    
+
     usuario_key = st.session_state["usuario"]
-    
+
     try:
-        df_resumen = cargar_pestana("Resumen")
-        if "usuario" in df_resumen.columns:
-            df_resumen["usuario"] = (
-                df_resumen["usuario"]
-                .fillna("")
-                .astype(str)
-                .str.replace(r'\xa0', '', regex=True)
-                .str.strip()
-                .str.lower()
-            )
-            resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
-            
-            if not resumen_user.empty:
-                monto = limpiar_numero(resumen_user["monto"].iloc[0])
-                plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
-                tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
-                cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
-                
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Monto Aprobado", f"${monto:,.0f}")
-                col2.metric("Plazo Total", f"{plazo} meses")
-                col3.metric("Tasa de Interés", f"{tasa*100:.1f}% MV" if tasa < 1 else f"{tasa}% MV")
-                col4.metric("Cuota Mensual", f"${cuota:,.0f}")
-        
-        st.markdown("---")
-        
-        df_amort = cargar_pestana("Amortizacion")
-        if "usuario" in df_amort.columns:
-            df_amort["usuario"] = (
-                df_amort["usuario"]
-                .fillna("")
-                .astype(str)
-                .str.replace(r'\xa0', '', regex=True)
-                .str.strip()
-                .str.lower()
-            )
-            amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
-            
-            if not amort_user.empty:
-                st.subheader("📋 Plan de Pagos Programado")
-                for col in ["intereses", "capital", "saldo"]:
-                    if col in amort_user.columns:
-                        amort_user[col] = amort_user[col].apply(limpiar_numero)
-                
-                cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo"] if c in amort_user.columns]
-                tabla_mostrar = amort_user[cols_existentes].copy()
-                
-                st.dataframe(
-                    tabla_mostrar.style.format({
-                        col: "${:,.0f}" for col in ["intereses", "capital", "saldo"] if col in tabla_mostrar.columns
-                    }),
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.warning("No hay registros de amortización para este usuario.")
+        with st.spinner("Cargando tu información..."):
+            # --- SECCIÓN RESUMEN ---
+            df_resumen = cargar_pestana("Resumen")
+            if "usuario" in df_resumen.columns:
+                df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"])
+                resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
+
+                if not resumen_user.empty:
+                    monto = limpiar_numero(resumen_user["monto"].iloc[0])
+                    plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
+                    tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
+                    cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
+
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Monto Aprobado", f"${monto:,.0f}")
+                    col2.metric("Plazo Total", f"{plazo} meses")
+                    col3.metric("Tasa de Interés", f"{tasa*100:.2f}% MV" if tasa < 1 else f"{tasa:.2f}% MV")
+                    col4.metric("Cuota Mensual", f"${cuota:,.0f}")
+                else:
+                    st.info("No se encontró información de resumen para este usuario.")
+
+            st.markdown("---")
+
+            # --- SECCIÓN AMORTIZACIÓN ---
+            df_amort = cargar_pestana("Amortizacion")
+            if "usuario" in df_amort.columns:
+                df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
+                amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
+
+                if not amort_user.empty:
+                    st.subheader("📋 Plan de Pagos Programado")
+
+                    columnas_num = ["intereses", "capital", "saldo"]
+                    for col in columnas_num:
+                        if col in amort_user.columns:
+                            amort_user[col] = amort_user[col].apply(limpiar_numero)
+
+                    cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo"] if c in amort_user.columns]
+                    tabla_mostrar = amort_user[cols_existentes].copy()
+
+                    st.dataframe(
+                        tabla_mostrar.style.format({
+                            col: "${:,.0f}" for col in columnas_num if col in tabla_mostrar.columns
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.warning("No hay registros de plan de pagos programado para este usuario.")
     except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
+        st.error(f"Error al procesar la información del usuario: {e}")
