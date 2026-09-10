@@ -11,8 +11,8 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Tasa de interés mensual predeterminada para el simulador (Ej: 2.0% M.V.)
-TASA_MENSUAL_DEFAULT = 0.02 
+# Tasa de interés mensual predeterminada para el simulador (Ajustada al 0.7% M.V.)
+TASA_MENSUAL_DEFAULT = 0.007
 
 def get_image_base64(file_path):
     if os.path.exists(file_path):
@@ -639,12 +639,15 @@ else:
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<div class="dashboard-title">🧮 Simulador de Crédito FEDESO</div>', unsafe_allow_html=True)
 
+        # Formateo dinámico de la tasa de interés
+        tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
+
         # Encabezado con los campos envueltos en la tarjeta blanca
         st.markdown(f"""
         <div class="softr-card" style="margin-bottom: 20px;">
             <div class="card-header" style="margin-bottom: 15px;">
                 <span class="card-title">💡 CALCULADORA DE CUOTAS</span>
-                <span class="card-user-badge">Tasa de interés: {TASA_MENSUAL_DEFAULT * 100:.2f}% M.V.</span>
+                <span class="card-user-badge">Tasa de interés: {tasa_display}</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -677,9 +680,12 @@ else:
         P = monto_sim
 
         if i > 0:
-            cuota_sim = P * (i * (1 + i)**n) / ((1 + i)**n - 1)
+            cuota_exacta = P * (i * (1 + i)**n) / ((1 + i)**n - 1)
         else:
-            cuota_sim = P / n
+            cuota_exacta = P / n
+
+        # Redondeo exacto de la cuota al entero
+        cuota_sim = round(cuota_exacta)
 
         fecha_inicio = datetime.now()
         fecha_fin = fecha_inicio + relativedelta(months=n)
@@ -721,10 +727,10 @@ else:
             fecha_cuota = fecha_inicio + relativedelta(months=cuota_n)
             mes_txt = f"{meses_esp[fecha_cuota.month - 1][:3]}-{str(fecha_cuota.year)[2:]}"
 
-            interes_cuota = saldo * i
+            interes_cuota = round(saldo * i)
             capital_cuota = cuota_sim - interes_cuota
             saldo -= capital_cuota
-            if saldo < 0:
+            if saldo < 0 or cuota_n == n:
                 saldo = 0
 
             cronograma.append({
