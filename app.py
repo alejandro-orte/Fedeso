@@ -15,99 +15,142 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS PERSONALIZADOS (ESTILO DASHBOARD SOFTR)
+# ESTILOS CSS PERSONALIZADOS (ESTILO DASHBOARD MODERNO)
 # =========================================================
 st.markdown("""
     <style>
-    /* Fondo oscuro de la aplicación */
+    /* Fondo oscuro con degradado principal */
     .stApp { 
-        background: linear-gradient(135deg, #0e0720 0%, #1b123a 100%) !important; 
+        background: linear-gradient(135deg, #0d0722 0%, #170e38 50%, #1f1147 100%) !important; 
     }
     
-    /* Ocultar barra lateral por defecto si se prefiere dashboard completo */
+    /* Ocultar barra lateral si se desea o estilizarla */
     [data-testid="stSidebar"] {
-        background-color: #120b2d !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: #120a2e !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     /* Ocultar elementos nativos innecesarios de Streamlit */
     #MainMenu, header, footer {visibility: hidden;}
 
-    /* Título principal centrado estilo Softr */
+    /* Contenedor Header Superior */
+    .nav-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0px 20px 0px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 25px;
+    }
+
+    /* Título principal centrado */
     .dashboard-title {
         color: #ffffff;
-        font-family: 'Inter', sans-serif;
+        font-family: 'Inter', -apple-system, sans-serif;
         text-align: center;
-        font-size: 2rem;
-        font-weight: 700;
+        font-size: 2.1rem;
+        font-weight: 800;
+        letter-spacing: -0.5px;
         margin-bottom: 25px;
+        text-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
 
     /* Tarjetas blancas estilo Softr */
     .softr-card {
         background-color: #ffffff;
-        border-radius: 18px;
-        padding: 24px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.35);
         margin-bottom: 25px;
         color: #0f172a;
     }
 
-    /* Encabezado de tarjeta */
+    /* Encabezado de la tarjeta */
     .card-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 1px solid #f1f5f9;
-        padding-bottom: 12px;
-        margin-bottom: 20px;
+        border-bottom: 2px solid #f1f5f9;
+        padding-bottom: 14px;
+        margin-bottom: 22px;
     }
 
     .card-title {
-        font-size: 1.1rem;
+        font-size: 1.15rem;
         font-weight: 800;
         color: #0f172a;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
 
-    .card-user-email {
-        font-size: 0.95rem;
+    .card-user-badge {
+        font-size: 0.9rem;
         font-weight: 600;
-        color: #334155;
+        color: #1e293b;
+        background: #f1f5f9;
+        padding: 6px 14px;
+        border-radius: 20px;
+        border: 1px solid #e2e8f0;
     }
 
-    /* Cuadrícula de métricas en la tarjeta */
+    /* Cuadrícula de métricas */
     .metrics-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 20px 30px;
+        gap: 22px 35px;
     }
 
     .metric-item-label {
         font-size: 0.85rem;
+        font-weight: 600;
         color: #64748b;
-        margin-bottom: 4px;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
     .metric-item-val {
-        font-size: 1.5rem;
+        font-size: 1.55rem;
         font-weight: 800;
-        color: #000000;
+        color: #0f172a;
+        line-height: 1.2;
     }
 
-    /* Ajustes para la tabla en Streamlit */
-    div[data-testid="stDataFrame"] {
-        background-color: #ffffff;
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    .status-tag-green {
+        display: inline-block;
+        background-color: #dcfce7;
+        color: #15803d;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        font-weight: 700;
     }
-    
+
+    /* Estilos de la tarjeta contenedor de la tabla */
+    .table-container-card {
+        background-color: #ffffff;
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.35);
+        margin-bottom: 25px;
+    }
+
+    /* Estilos de Streamlit DataFrame */
+    div[data-testid="stDataFrame"] {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+
+    /* Formulario de Login */
     div[data-testid="stForm"] {
         background-color: #ffffff;
-        border-radius: 18px;
-        padding: 30px;
+        border-radius: 20px;
+        padding: 35px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -165,8 +208,8 @@ if not st.session_state["autenticado"]:
         st.write("")
         st.write("")
         st.image(LOGO_URL, width=80)
-        st.markdown("<h2 style='color: white;'>FEDESO</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #cbd5e1;'>Fondo Empresarial de Solidaridad</p>", unsafe_allow_html=True)
+        st.markdown("<h2 style='color: white; font-weight: 800;'>FEDESO</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #cbd5e1; margin-bottom: 20px;'>Fondo Empresarial de Solidaridad</p>", unsafe_allow_html=True)
 
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
@@ -206,7 +249,7 @@ if not st.session_state["autenticado"]:
                             st.error(f"Error al conectar: {e}")
 
 # =========================================================
-# 2. PANTALLA INTERNA (DASHBOARD OSCURO ESTILO SOFTR)
+# 2. PANTALLA INTERNA (DASHBOARD)
 # =========================================================
 else:
     # --- BARRA SUPERIOR DE NAVEGACIÓN ---
@@ -214,9 +257,9 @@ else:
     with header_col1:
         st.markdown(
             f"""
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <img src="{LOGO_URL}" width="40"/>
-                <span style="color: white; font-weight: 800; font-size: 1.2rem;">FEDESO</span>
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 10px;">
+                <img src="{LOGO_URL}" width="42"/>
+                <span style="color: white; font-weight: 800; font-size: 1.3rem; letter-spacing: 0.5px;">FEDESO</span>
             </div>
             """, 
             unsafe_allow_html=True
@@ -234,7 +277,7 @@ else:
     usuario_key = st.session_state["usuario"]
 
     try:
-        with st.spinner("Cargando tu estado de cuenta..."):
+        with st.spinner("Cargando tu información..."):
             df_resumen = cargar_pestana("Resumen")
             df_amort = cargar_pestana("Amortizacion")
 
@@ -248,15 +291,14 @@ else:
                     tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                     cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
 
-                    # Tasa formateada
                     tasa_fmt = f"{tasa*100:.2f}%" if tasa < 1 else f"{tasa:.2f}%"
 
-                    # TARJETA BLANCA DE RESUMEN (REPLICANDO LA IMAGEN)
+                    # TARJETA DE RESUMEN DE PRÉSTAMO
                     st.markdown(f"""
                     <div class="softr-card">
                         <div class="card-header">
-                            <span class="card-title">RESUMEN DE PRÉSTAMO</span>
-                            <span class="card-user-email">👤 {st.session_state['nombre']}</span>
+                            <span class="card-title">📊 RESUMEN DE PRÉSTAMO</span>
+                            <span class="card-user-badge">👤 {st.session_state['nombre']}</span>
                         </div>
                         <div class="metrics-grid">
                             <div>
@@ -265,7 +307,7 @@ else:
                             </div>
                             <div>
                                 <div class="metric-item-label">Plazo (Meses):</div>
-                                <div class="metric-item-val">{plazo}</div>
+                                <div class="metric-item-val">{plazo} meses</div>
                             </div>
                             <div>
                                 <div class="metric-item-label">Tasa M.V.:</div>
@@ -280,48 +322,65 @@ else:
                                 <div class="metric-item-val">{(tasa*12)*100 if tasa < 1 else tasa*12:.2f}%</div>
                             </div>
                             <div>
-                                <div class="metric-item-label">Estado de Cuenta:</div>
-                                <div class="metric-item-val" style="color: #16a34a;">Al día</div>
+                                <div class="metric-item-label">Estado del Crédito:</div>
+                                <div class="metric-item-val"><span class="status-tag-green">🟢 Al día</span></div>
                             </div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    st.info("No se encontró resumen para este usuario.")
+                    st.info("No se encontró información de resumen para este usuario.")
 
-            # --- TABLA DE AMORTIZACIÓN (PLAN DE PAGOS) ---
+            # --- TABLA DE PLAN DE PAGOS Y DETALLES DE AMORTIZACIÓN ---
             if "usuario" in df_amort.columns:
                 df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
                 amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
 
                 if not amort_user.empty:
-                    st.markdown("""
-                    <div style="background-color: #ffffff; border-radius: 18px 18px 0 0; padding: 18px 24px; margin-top: 10px;">
-                        <span style="font-size: 1.1rem; font-weight: 800; color: #0f172a;">📅 PLAN DE PAGOS (AMORTIZACIONES)</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
                     columnas_num = ["intereses", "capital", "saldo"]
                     for col in columnas_num:
                         if col in amort_user.columns:
                             amort_user[col] = amort_user[col].apply(limpiar_numero)
 
-                    if "estado" in amort_user.columns:
-                        amort_user["estado"] = amort_user["estado"].fillna("Pendiente")
+                    # Si no existe la columna 'estado' en la hoja de cálculo, la creamos con valor por defecto
+                    if "estado" not in amort_user.columns:
+                        amort_user["estado"] = "Al día"
+                    else:
+                        amort_user["estado"] = amort_user["estado"].fillna("Al día").astype(str).str.strip()
+
+                    # Contenedor blanco para la tabla de amortización
+                    st.markdown("""
+                    <div class="table-container-card">
+                        <div class="card-header">
+                            <span class="card-title">📅 PLAN DE PAGOS (AMORTIZACIONES)</span>
+                        </div>
+                    """, unsafe_allow_html=True)
 
                     cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
                     tabla_mostrar = amort_user[cols_existentes].copy()
 
-                    # Renombrar columnas para calcar la imagen
+                    # Renombrar columnas para la visualización
                     renombrar = {
                         "cuota_num": "Nº",
                         "mes_año": "Mes/Año",
-                        "estado": "Estado",
+                        "estado": "Estado de Pago",
                         "intereses": "Intereses",
                         "capital": "Capital",
                         "saldo": "Saldo"
                     }
                     tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
+
+                    # Formatear la columna de estado con distintivos
+                    def formato_estado_badge(val):
+                        val_str = str(val).lower()
+                        if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
+                            return "🟢 Al día"
+                        elif "pendiente" in val_str or "curso" in val_str:
+                            return "🟡 Pendiente"
+                        return val
+
+                    if "Estado de Pago" in tabla_mostrar.columns:
+                        tabla_mostrar["Estado de Pago"] = tabla_mostrar["Estado de Pago"].apply(formato_estado_badge)
 
                     st.dataframe(
                         tabla_mostrar.style.format({
@@ -332,6 +391,8 @@ else:
                         use_container_width=True,
                         hide_index=True
                     )
+
+                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     st.warning("No hay registros de plan de pagos programado.")
     except Exception as e:
