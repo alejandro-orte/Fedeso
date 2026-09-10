@@ -132,6 +132,52 @@ st.markdown("""
         font-weight: 700;
     }
 
+    /* Estilos de la etiqueta de progreso legible */
+    .progress-label-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #f8fafc;
+        padding: 10px 16px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        margin-top: 15px;
+        margin-bottom: 10px;
+    }
+
+    .progress-label-text {
+        color: #1e293b;
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .progress-percent-badge {
+        background-color: #2563eb;
+        color: #ffffff;
+        font-weight: 800;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.95rem;
+    }
+
+    /* Personalización avanzada de la Barra de Progreso de Streamlit */
+    div[data-testid="stProgress"] {
+        height: 18px !important;
+    }
+
+    div[data-testid="stProgress"] > div {
+        background-color: #e2e8f0 !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+        height: 18px !important;
+    }
+
+    div[data-testid="stProgress"] > div > div > div > div {
+        background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 0 10px rgba(37, 99, 235, 0.5);
+    }
+
     /* Estilos del contenedor de la tabla */
     .table-container-card {
         background-color: #ffffff;
@@ -141,16 +187,12 @@ st.markdown("""
         margin-bottom: 25px;
     }
 
-    /* Estilos para Dataframe y Barra de Progreso */
+    /* Estilos para Dataframe */
     div[data-testid="stDataFrame"] {
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid #e2e8f0;
         background-color: #ffffff;
-    }
-
-    .stProgress > div > div > div > div {
-        background-color: #2563eb !important;
     }
 
     /* Formulario de Login */
@@ -161,7 +203,6 @@ st.markdown("""
         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
     }
 
-    /* Estilo para contenedor centrado del logo en login */
     .login-logo-container {
         text-align: center;
         margin-bottom: 15px;
@@ -233,7 +274,6 @@ if not st.session_state["autenticado"]:
     with col_b:
         st.write("")
         st.write("")
-        # Imagen principal en el login (240px de tamaño)
         st.markdown(
             f"""
             <div class="login-logo-container">
@@ -318,7 +358,6 @@ else:
             df_resumen = cargar_pestana("Resumen")
             df_amort = cargar_pestana("Amortizacion")
 
-            # Variables de datos de amortización / avance de pagos
             num_pagadas = 0
             total_cuotas = 0
             estado_proxima_str = "N/A"
@@ -341,7 +380,6 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
-                    # Excluir la cuota 0 (desembolso inicial) para los cálculos
                     amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"]
                     total_cuotas = len(amort_cuotas)
 
@@ -350,7 +388,6 @@ else:
                     ]
                     num_pagadas = len(cuotas_pagadas_df)
 
-                    # Próxima cuota a pagar
                     proxima_cuota = amort_cuotas[
                         ~amort_cuotas["estado"].str.lower().isin(["pagado", "al dia", "al día"])
                     ]
@@ -419,7 +456,7 @@ else:
                 <div class="card-header">
                     <span class="card-title">📊 ESTADO DE PAGOS Y PROGRESO</span>
                 </div>
-                <div class="metrics-grid-3" style="margin-bottom: 20px;">
+                <div class="metrics-grid-3">
                     <div>
                         <div class="metric-item-label">Progreso de Pago</div>
                         <div class="metric-item-val">{num_pagadas} de {total_cuotas} cuotas</div>
@@ -433,12 +470,15 @@ else:
                         <div class="metric-item-val">${saldo_pendiente_est:,.0f}</div>
                     </div>
                 </div>
-            </div>
+                <div class="progress-label-box">
+                    <span class="progress-label-text">Progreso Actual de Amortización</span>
+                    <span class="progress-percent-badge">{porcentaje_progreso*100:.1f}% Pagado</span>
+                </div>
             """, unsafe_allow_html=True)
 
-            # Barra de avance
-            st.caption(f"Progreso actual: **{porcentaje_progreso*100:.1f}% pagado**")
+            # Barra de avance integrada en la tarjeta
             st.progress(porcentaje_progreso)
+            st.markdown('</div>', unsafe_allow_html=True)
 
             st.write("")
 
