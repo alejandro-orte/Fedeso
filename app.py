@@ -11,7 +11,7 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Tasa de interés mensual predeterminada para el simulador (Ajustada al 0.7% M.V.)
+# Tasa de interés mensual predeterminada (0.7% M.V.)
 TASA_MENSUAL_DEFAULT = 0.007
 
 def get_image_base64(file_path):
@@ -218,10 +218,7 @@ st.markdown("""
         box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
     }
 
-    /* =========================================================
-       MEJORAS VISUALES PARA CAMPOS DE ENTRADA Y TABLA
-       ========================================================= */
-    /* Estilo de las etiquetas de entrada de número */
+    /* CAMPOS DE ENTRADA Y TABLA */
     div[data-testid="stNumberInput"] label {
         color: #0f172a !important;
         font-size: 1rem !important;
@@ -229,7 +226,6 @@ st.markdown("""
         margin-bottom: 6px !important;
     }
 
-    /* Estilo del input (número grande y caja clara) */
     div[data-testid="stNumberInput"] input {
         font-size: 1.3rem !important;
         font-weight: 800 !important;
@@ -246,7 +242,6 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
     }
 
-    /* ENCABEZADOS DE TABLA AMORTIZACIÓN Y SIMULACIÓN */
     div[data-testid="stDataFrame"] {
         border-radius: 16px;
         overflow: hidden;
@@ -259,7 +254,6 @@ st.markdown("""
         padding: 14px 16px !important;
     }
 
-    /* Fuerza el texto de los títulos de la tabla a ser blanco y grande */
     div[data-testid="stDataFrame"] th p,
     div[data-testid="stDataFrame"] th span {
         color: #ffffff !important;
@@ -639,10 +633,9 @@ else:
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<div class="dashboard-title">🧮 Simulador de Crédito FEDESO</div>', unsafe_allow_html=True)
 
-        # Formateo dinámico de la tasa de interés
+        # Formateo dinámico de la tasa de interés en pantalla
         tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
 
-        # Encabezado con los campos envueltos en la tarjeta blanca
         st.markdown(f"""
         <div class="softr-card" style="margin-bottom: 20px;">
             <div class="card-header" style="margin-bottom: 15px;">
@@ -674,7 +667,7 @@ else:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Cálculos de amortización
+        # CÁLCULO DE LA CUOTA EXACTA Y REDONDEO
         i = TASA_MENSUAL_DEFAULT
         n = plazo_sim
         P = monto_sim
@@ -684,7 +677,7 @@ else:
         else:
             cuota_exacta = P / n
 
-        # Redondeo exacto de la cuota al entero
+        # Redondeo exacto directo al entero ($226.984)
         cuota_sim = round(cuota_exacta)
 
         fecha_inicio = datetime.now()
@@ -717,10 +710,10 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        # Tabla proyectada
+        # Tabla proyectada de amortización (Redondeada a enteros sin descuadres)
         st.markdown('<div class="section-header-title">📅 PROYECCIÓN PASO A PASO</div>', unsafe_allow_html=True)
 
-        saldo = P
+        saldo = float(P)
         cronograma = []
 
         for cuota_n in range(1, n + 1):
@@ -728,18 +721,24 @@ else:
             mes_txt = f"{meses_esp[fecha_cuota.month - 1][:3]}-{str(fecha_cuota.year)[2:]}"
 
             interes_cuota = round(saldo * i)
-            capital_cuota = cuota_sim - interes_cuota
-            saldo -= capital_cuota
-            if saldo < 0 or cuota_n == n:
-                saldo = 0
+            
+            # En la última cuota ajustamos el capital para que el saldo quede exactamente en 0
+            if cuota_n == n:
+                capital_cuota = round(saldo)
+                cuota_aplicada = capital_cuota + interes_cuota
+                saldo = 0.0
+            else:
+                capital_cuota = cuota_sim - interes_cuota
+                saldo -= capital_cuota
+                cuota_aplicada = cuota_sim
 
             cronograma.append({
                 "Nº": cuota_n,
                 "Mes/Año": mes_txt,
-                "Cuota Fija": cuota_sim,
+                "Cuota Fija": cuota_aplicada,
                 "Intereses": interes_cuota,
                 "Capital": capital_cuota,
-                "Saldo Restante": saldo
+                "Saldo Restante": max(0.0, saldo)
             })
 
         df_cronograma = pd.DataFrame(cronograma)
