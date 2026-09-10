@@ -31,7 +31,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS PERSONALIZADOS
+# ESTILOS CSS PERSONALIZADOS Y MEJORAS DE VISUALIZACIÓN
 # =========================================================
 st.markdown("""
     <style>
@@ -218,7 +218,35 @@ st.markdown("""
         box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
     }
 
-    /* ENCABEZADOS DE TABLA (DATAFRAME) */
+    /* =========================================================
+       MEJORAS VISUALES PARA CAMPOS DE ENTRADA Y TABLA
+       ========================================================= */
+    /* Estilo de las etiquetas de entrada de número */
+    div[data-testid="stNumberInput"] label {
+        color: #0f172a !important;
+        font-size: 1rem !important;
+        font-weight: 700 !important;
+        margin-bottom: 6px !important;
+    }
+
+    /* Estilo del input (número grande y caja clara) */
+    div[data-testid="stNumberInput"] input {
+        font-size: 1.3rem !important;
+        font-weight: 800 !important;
+        color: #0f172a !important;
+        background-color: #f8fafc !important;
+        border: 2px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+        padding: 10px 14px !important;
+        height: 50px !important;
+    }
+
+    div[data-testid="stNumberInput"] input:focus {
+        border-color: #2563eb !important;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
+    }
+
+    /* ENCABEZADOS DE TABLA AMORTIZACIÓN Y SIMULACIÓN */
     div[data-testid="stDataFrame"] {
         border-radius: 16px;
         overflow: hidden;
@@ -228,17 +256,17 @@ st.markdown("""
 
     div[data-testid="stDataFrame"] th {
         background-color: #1e293b !important;
-        color: #ffffff !important;
-        font-weight: 800 !important;
-        font-size: 0.9rem !important;
-        text-transform: uppercase !important;
-        border-bottom: 2px solid #334155 !important;
-        padding: 12px 16px !important;
+        padding: 14px 16px !important;
     }
 
-    div[data-testid="stDataFrame"] [data-testid="stTable"] th span {
+    /* Fuerza el texto de los títulos de la tabla a ser blanco y grande */
+    div[data-testid="stDataFrame"] th p,
+    div[data-testid="stDataFrame"] th span {
         color: #ffffff !important;
+        font-size: 1.05rem !important;
         font-weight: 800 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
     }
 
     /* Login */
@@ -305,7 +333,6 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     return df
 
 
-# Inicializar variables de estado
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario"] = ""
@@ -373,9 +400,7 @@ if not st.session_state["autenticado"]:
 # 2. PANTALLA INTERNA
 # =========================================================
 else:
-    # ---------------------------------------------------------
-    # BARRA LATERAL IZQUIERDA (SIDEBAR DE NAVEGACIÓN Y PERFIL)
-    # ---------------------------------------------------------
+    # BARRA LATERAL IZQUIERDA
     with st.sidebar:
         st.markdown(
             f"""
@@ -390,17 +415,14 @@ else:
 
         st.subheader("⚙️ Menú Principal")
 
-        # Botón para regresar al Estado de Cuenta
         if st.button("📊 Mi Estado de Cuenta", use_container_width=True, key="btn_dashboard"):
             st.session_state["pantalla"] = "dashboard"
             st.rerun()
 
-        # Botón para ir al Simulador de Crédito
         if st.button("🧮 Simulador de Crédito", use_container_width=True, key="btn_simulador"):
             st.session_state["pantalla"] = "simulador"
             st.rerun()
 
-        # Botón para ir a Solicitud de Crédito (Link Externo)
         st.link_button(
             "📝 Solicitud de Crédito", 
             FORM_URL, 
@@ -409,7 +431,6 @@ else:
 
         st.divider()
 
-        # Botón para Cerrar Sesión
         if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
             st.session_state["autenticado"] = False
             st.session_state["usuario"] = ""
@@ -432,7 +453,7 @@ else:
     )
 
     # ---------------------------------------------------------
-    # OPCCIÓN A: DASHBOARD / ESTADO DE CUENTA
+    # OPCIÓN A: DASHBOARD / ESTADO DE CUENTA
     # ---------------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
         st.markdown('<div class="dashboard-title">Mi Estado de Cuenta FEDESO</div>', unsafe_allow_html=True)
@@ -618,15 +639,15 @@ else:
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<div class="dashboard-title">🧮 Simulador de Crédito FEDESO</div>', unsafe_allow_html=True)
 
-        st.markdown("""
-        <div class="softr-card">
-            <div class="card-header">
+        # Encabezado con los campos envueltos en la tarjeta blanca
+        st.markdown(f"""
+        <div class="softr-card" style="margin-bottom: 20px;">
+            <div class="card-header" style="margin-bottom: 15px;">
                 <span class="card-title">💡 CALCULADORA DE CUOTAS</span>
-                <span class="card-user-badge">Tasa de interés: {:.2f}% M.V.</span>
+                <span class="card-user-badge">Tasa de interés: {TASA_MENSUAL_DEFAULT * 100:.2f}% M.V.</span>
             </div>
-        """.format(TASA_MENSUAL_DEFAULT * 100), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-        # Formulario de entrada de datos
         col_monto, col_plazo = st.columns(2)
 
         with col_monto:
@@ -650,7 +671,7 @@ else:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Cálculos de amortización (Fórmula cuota fija)
+        # Cálculos de amortización
         i = TASA_MENSUAL_DEFAULT
         n = plazo_sim
         P = monto_sim
@@ -660,7 +681,6 @@ else:
         else:
             cuota_sim = P / n
 
-        # Fecha actual y fecha final calculada
         fecha_inicio = datetime.now()
         fecha_fin = fecha_inicio + relativedelta(months=n)
 
@@ -668,7 +688,7 @@ else:
                      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         fecha_fin_str = f"{meses_esp[fecha_fin.month - 1]} de {fecha_fin.year}"
 
-        # Visualización de Resultados
+        # Resultado de la simulación
         st.markdown(f"""
         <div class="softr-card">
             <div class="card-header">
@@ -691,7 +711,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        # Generación de la tabla de proyectado de amortización
+        # Tabla proyectada
         st.markdown('<div class="section-header-title">📅 PROYECCIÓN PASO A PASO</div>', unsafe_allow_html=True)
 
         saldo = P
