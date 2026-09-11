@@ -294,43 +294,54 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # --- EVALUACIÓN PRECISA DEL MES ACTUAL ---
-                    hoy = datetime.date.today()
-                    col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
-                    
-                    cuota_mes_actual_pagada = False
-                    hay_cuotas_vencidas = False
+              # --- EVALUACIÓN PRECISA Y ROBUSTA DEL ESTADO DE CRÉDITO ---
+hoy = datetime.date.today()
+primer_dia_mes_actual = hoy.replace(day=1)
 
-                    if col_fecha:
-                        amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce")
-                        
-                        # Cuotas anteriores a este mes sin pagar
-                        cuotas_pasadas_pendientes = amort_cuotas[
-                            (amort_cuotas["fecha_dt"].dt.date < hoy.replace(day=1)) &
-                            (~estados_limpios.isin(["pagado", "pagada", "al dia", "al día"]))
-                        ]
-                        if not cuotas_pasadas_pendientes.empty:
-                            hay_cuotas_vencidas = True
+# Asegurar que se excluye la cuota 0 (desembolso) sin importar el tipo de dato
+amort_cuotas = amort_cuotas[
+    ~amort_cuotas["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
+].copy()
 
-                        # Cuota específica del mes en curso
-                        cuota_actual = amort_cuotas[
-                            (amort_cuotas["fecha_dt"].dt.month == hoy.month) &
-                            (amort_cuotas["fecha_dt"].dt.year == hoy.year)
-                        ]
-                        if not cuota_actual.empty:
-                            est_actual = cuota_actual.iloc[0]["estado"].lower().strip()
-                            if est_actual in ["pagado", "pagada", "al dia", "al día"]:
-                                cuota_mes_actual_pagada = True
+col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
 
-                    # Asignación del badge general según las condiciones
-                    if total_cuotas > 0 and num_pagadas == total_cuotas:
-                        badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
-                    elif hay_cuotas_vencidas:
-                        badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-                    elif cuota_mes_actual_pagada or (not proxima_cuota.empty and proxima_cuota.iloc[0].get("fecha_dt") and proxima_cuota.iloc[0]["fecha_dt"].date() > hoy):
-                        badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-                    else:
-                        badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+cuota_mes_actual_pagada = False
+hay_cuotas_vencidas = False
+
+if col_fecha:
+    # Convertir fechas permitiendo día al inicio y parseo flexible
+    amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce", dayfirst=True)
+
+    # Identificar estados válidos de pago
+    es_pagado = estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])
+
+    # 1. Cuotas con fecha estrictamente ANTERIOR al inicio del mes actual que NO estén pagadas
+    cuotas_pasadas_pendientes = amort_cuotas[
+        (amort_cuotas["fecha_dt"].dt.date < primer_dia_mes_actual) & (~es_pagado)
+    ]
+    if not cuotas_pasadas_pendientes.empty:
+        hay_cuotas_vencidas = True
+
+    # 2. Verificar la cuota del mes en curso
+    cuota_actual = amort_cuotas[
+        (amort_cuotas["fecha_dt"].dt.month == hoy.month) &
+        (amort_cuotas["fecha_dt"].dt.year == hoy.year)
+    ]
+    if not cuota_actual.empty:
+        est_actual = cuota_actual.iloc[0]["estado"].lower().strip()
+        if est_actual in ["pagado", "pagada", "al dia", "al día"]:
+            cuota_mes_actual_pagada = True
+
+# --- Asignación jerárquica de la insignia (Badge) ---
+if total_cuotas > 0 and num_pagadas >= total_cuotas:
+    badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
+elif hay_cuotas_vencidas:
+    badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+elif proxima_cuota.empty or cuota_mes_actual_pagada:
+    # Si la cuota actual está pagada o el próximo cobro es un mes futuro (ej. octubre)
+    badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+else:
+    badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
 
                 # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
                 if "usuario" in df_resumen.columns:
