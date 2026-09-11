@@ -256,7 +256,6 @@ else:
                 saldo_pendiente_est = 0.0
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
-                proxima_cuota = pd.DataFrame()
                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_amort.columns:
@@ -277,21 +276,7 @@ else:
                     amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"].copy()
                     total_cuotas = len(amort_cuotas)
 
-                    # --- EVALUACIÓN DE MES ACTUAL ---
-                    hoy = datetime.date.today()
-                    mes_actual = hoy.month
-                    anio_actual = hoy.year
-
-                    col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
-                    if col_fecha:
-                        amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce")
-                        cuota_mes_actual = amort_cuotas[
-                            (amort_cuotas["fecha_dt"].dt.month == mes_actual) & 
-                            (amort_cuotas["fecha_dt"].dt.year == anio_actual)
-                        ]
-                    else:
-                        cuota_mes_actual = pd.DataFrame()
-
+                    # Cuotas según estado
                     estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
                     cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
                     num_pagadas = len(cuotas_pagadas_df)
@@ -309,16 +294,20 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # Badge visual del estado por mes
-                    if not cuota_mes_actual.empty:
-                        est_mes = cuota_mes_actual["estado"].astype(str).str.lower().str.strip().iloc[0]
-                        if est_mes in ["pagado", "pagada", "al dia", "al día"]:
-                            badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+                    # --- LÓGICA DE DETECCION DE ESTADO GENERAL ---
+                    # 1. Obtenemos la primera cuota que no está pagada
+                    if not proxima_cuota.empty:
+                        est_primer_pendiente = proxima_cuota.iloc[0]["estado"].lower().strip()
+                        
+                        # Si el texto directo de la base dice mora, o si la primera pendiente no está pagada:
+                        if "mora" in est_primer_pendiente or "atras" in est_primer_pendiente:
+                            badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                        elif "pendiente" in est_primer_pendiente or "curso" in est_primer_pendiente:
+                            badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
                     else:
-                        todas_pagadas = estados_limpios.isin(["pagado", "pagada", "al dia", "al día"]).all()
-                        if todas_pagadas and total_cuotas > 0:
+                        if total_cuotas > 0 and num_pagadas == total_cuotas:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
@@ -425,6 +414,8 @@ else:
                         val_str = str(val).lower()
                         if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
                             return "🟢 Pagado"
+                        elif "mora" in val_str or "atras" in val_str:
+                            return "🔴 En Mora"
                         elif "pendiente" in val_str or "curso" in val_str:
                             return "🟡 Pendiente"
                         return val
