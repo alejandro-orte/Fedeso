@@ -273,7 +273,10 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
-                    amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"].copy()
+                    # Excluir de forma estricta la cuota 0 (desembolso/registro inicial)
+                    amort_cuotas = amort_user[
+                        ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
+                    ].copy()
                     total_cuotas = len(amort_cuotas)
 
                     # Normalización del estado
@@ -294,54 +297,46 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-              # --- EVALUACIÓN PRECISA Y ROBUSTA DEL ESTADO DE CRÉDITO ---
-hoy = datetime.date.today()
-primer_dia_mes_actual = hoy.replace(day=1)
+                    # --- EVALUACIÓN PRECISA Y ROBUSTA DEL ESTADO DE CRÉDITO ---
+                    hoy = datetime.date.today()
+                    primer_dia_mes_actual = hoy.replace(day=1)
 
-# Asegurar que se excluye la cuota 0 (desembolso) sin importar el tipo de dato
-amort_cuotas = amort_cuotas[
-    ~amort_cuotas["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
-].copy()
+                    col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
 
-col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
+                    cuota_mes_actual_pagada = False
+                    hay_cuotas_vencidas = False
 
-cuota_mes_actual_pagada = False
-hay_cuotas_vencidas = False
+                    if col_fecha:
+                        # Parsing flexible de fecha reconociendo el formato de día primero
+                        amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce", dayfirst=True)
+                        es_pagado = estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])
 
-if col_fecha:
-    # Convertir fechas permitiendo día al inicio y parseo flexible
-    amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce", dayfirst=True)
+                        # 1. Cuotas de meses ANTERIORES al mes actual que sigan pendientes
+                        cuotas_pasadas_pendientes = amort_cuotas[
+                            (amort_cuotas["fecha_dt"].dt.date < primer_dia_mes_actual) & (~es_pagado)
+                        ]
+                        if not cuotas_pasadas_pendientes.empty:
+                            hay_cuotas_vencidas = True
 
-    # Identificar estados válidos de pago
-    es_pagado = estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])
+                        # 2. Verificar si la cuota del mes en curso ya está pagada
+                        cuota_actual = amort_cuotas[
+                            (amort_cuotas["fecha_dt"].dt.month == hoy.month) &
+                            (amort_cuotas["fecha_dt"].dt.year == hoy.year)
+                        ]
+                        if not cuota_actual.empty:
+                            est_actual = cuota_actual.iloc[0]["estado"].lower().strip()
+                            if est_actual in ["pagado", "pagada", "al dia", "al día"]:
+                                cuota_mes_actual_pagada = True
 
-    # 1. Cuotas con fecha estrictamente ANTERIOR al inicio del mes actual que NO estén pagadas
-    cuotas_pasadas_pendientes = amort_cuotas[
-        (amort_cuotas["fecha_dt"].dt.date < primer_dia_mes_actual) & (~es_pagado)
-    ]
-    if not cuotas_pasadas_pendientes.empty:
-        hay_cuotas_vencidas = True
-
-    # 2. Verificar la cuota del mes en curso
-    cuota_actual = amort_cuotas[
-        (amort_cuotas["fecha_dt"].dt.month == hoy.month) &
-        (amort_cuotas["fecha_dt"].dt.year == hoy.year)
-    ]
-    if not cuota_actual.empty:
-        est_actual = cuota_actual.iloc[0]["estado"].lower().strip()
-        if est_actual in ["pagado", "pagada", "al dia", "al día"]:
-            cuota_mes_actual_pagada = True
-
-# --- Asignación jerárquica de la insignia (Badge) ---
-if total_cuotas > 0 and num_pagadas >= total_cuotas:
-    badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
-elif hay_cuotas_vencidas:
-    badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-elif proxima_cuota.empty or cuota_mes_actual_pagada:
-    # Si la cuota actual está pagada o el próximo cobro es un mes futuro (ej. octubre)
-    badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-else:
-    badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                    # Determinación jerárquica de la insignia de estado
+                    if total_cuotas > 0 and num_pagadas >= total_cuotas:
+                        badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
+                    elif hay_cuotas_vencidas:
+                        badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                    elif proxima_cuota.empty or cuota_mes_actual_pagada:
+                        badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+                    else:
+                        badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
 
                 # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
                 if "usuario" in df_resumen.columns:
