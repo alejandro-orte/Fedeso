@@ -12,7 +12,7 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-TASA_MENSUAL_DEFAULT = 0.007
+TASA_MENSUAL_DEFAULT = 0.007  # 0.7% Mensual Vencido
 
 MESES_MAP = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
@@ -327,7 +327,7 @@ else:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
                     # =========================================================
-                    # ESTABLECER ESTADO DE FORMA DINÁMICA (IGNORA TEXTO MANUAL)
+                    # ESTABLECER ESTADO DE FORMA DINÁMICA
                     # =========================================================
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
@@ -345,7 +345,7 @@ else:
                                 badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
                             elif fecha_prox_dt == mes_actual_inicio:
                                 badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
-                            else: # Fecha mayor al mes actual (ej: Octubre 2026 estando en Septiembre 2026)
+                            else:
                                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
@@ -389,7 +389,7 @@ else:
                                     <span class="metric-value" style="color:#1e3a8a;">${cuota:,.0f}</span>
                                 </div>
                                 <div class="metric-container">
-                                    <span class="metric-label">Tasa Anual Estimada</span>
+                                    <span class="metric-label">Tasa Anual Nominal (T.A.N.)</span>
                                     <span class="metric-value">{tasa_anual_fmt}</span>
                                 </div>
                                 <div class="metric-container">
@@ -477,7 +477,7 @@ else:
 
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
-        tasa_display = "0.007% M.V."
+        tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
 
         st.markdown(f"""
         <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe;">
