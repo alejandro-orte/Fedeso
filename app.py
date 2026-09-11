@@ -11,8 +11,8 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Tasa de interés mensual predeterminada (0.007% M.V.)
-TASA_MENSUAL_DEFAULT = 0.00007
+# Tasa de interés mensual predeterminada (0.7% M.V.)
+TASA_MENSUAL_DEFAULT = 0.007
 
 def get_image_base64(file_path):
     if os.path.exists(file_path):
@@ -173,14 +173,40 @@ st.markdown("""
         font-weight: 700;
     }
 
-    .status-tag-red {
-        display: inline-block;
-        background-color: #fee2e2;
-        color: #991b1b;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.95rem;
+    /* ESTILOS DE LA BARRA DE PROGRESO (Añadido) */
+    .progress-section {
+        margin-top: 25px;
+        padding-top: 15px;
+        border-top: 1px solid #e2e8f0;
+    }
+    .progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .progress-title-text {
+        font-size: 0.9rem;
         font-weight: 700;
+        color: #475569;
+    }
+    .progress-badge {
+        font-size: 0.85rem;
+        font-weight: 800;
+        color: #2563eb;
+    }
+    .progress-track {
+        width: 100%;
+        height: 12px;
+        background-color: #e2e8f0;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%);
+        border-radius: 10px;
+        transition: width 0.4s ease;
     }
 
     /* CAMPOS DE ENTRADA Y TABLA */
@@ -430,7 +456,6 @@ else:
                 saldo_pendiente_est = 0.0
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
-                proxima_cuota = pd.DataFrame()
 
                 if "usuario" in df_amort.columns:
                     df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
@@ -478,24 +503,9 @@ else:
                     if not resumen_user.empty:
                         monto = limpiar_numero(resumen_user["monto"].iloc[0])
                         plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
-                        tasa_raw = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
+                        tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                         cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
-
-                        # CORRECCIÓN DE TASA:
-                        # Si viene en decimal (ej. 0.00007 o 0.007) o en porcentaje (0.7)
-                        if tasa_raw < 0.01:
-                            tasa_porcentaje_mv = tasa_raw * 100
-                        else:
-                            tasa_porcentaje_mv = tasa_raw
-
-                        tasa_fmt = f"{tasa_porcentaje_mv:.3f}%"
-                        tasa_anual_fmt = f"{(tasa_porcentaje_mv * 12):.3f}%"
-
-                        # CORRECCIÓN DE ESTADO DEL CRÉDITO DINÁMICO:
-                        if estado_proxima_str != "🎉 Completado" and not proxima_cuota.empty:
-                            estado_credito_html = '<span class="status-tag-red">🔴 Pendiente / Mora</span>'
-                        else:
-                            estado_credito_html = '<span class="status-tag-green">🟢 Al día</span>'
+                        tasa_fmt = f"{tasa*100:.2f}%" if tasa < 1 else f"{tasa:.2f}%"
 
                         st.markdown(f"""
                         <div class="softr-card">
@@ -522,11 +532,11 @@ else:
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Tasa Anual Estimada:</div>
-                                    <div class="metric-item-val">{tasa_anual_fmt}</div>
+                                    <div class="metric-item-val">{(tasa*12)*100 if tasa < 1 else tasa*12:.2f}%</div>
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Estado del Crédito:</div>
-                                    <div class="metric-item-val">{estado_credito_html}</div>
+                                    <div class="metric-item-val"><span class="status-tag-green">🟢 Al día</span></div>
                                 </div>
                             </div>
                         </div>
@@ -553,13 +563,13 @@ else:
                             <div class="metric-item-val">${saldo_pendiente_est:,.0f}</div>
                         </div>
                     </div>
-                    <div class="progress-section" style="margin-top:20px;">
-                        <div class="progress-header" style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                            <span class="progress-title-text" style="font-weight:700; color:#0f172a;">Progreso Actual de Amortización</span>
-                            <span class="progress-badge" style="font-weight:800; color:#2563eb;">{pct_val:.1f}% Pagado</span>
+                    <div class="progress-section">
+                        <div class="progress-header">
+                            <span class="progress-title-text">Progreso Actual de Amortización</span>
+                            <span class="progress-badge">{pct_val:.1f}% Pagado</span>
                         </div>
-                        <div class="progress-track" style="background:#e2e8f0; height:12px; border-radius:6px; overflow:hidden;">
-                            <div class="progress-fill" style="width: {pct_val:.1f}%; background:#2563eb; height:100%;"></div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: {pct_val:.1f}%;"></div>
                         </div>
                     </div>
                 </div>
@@ -614,7 +624,7 @@ else:
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<div class="dashboard-title">🧮 Simulador de Crédito FEDESO</div>', unsafe_allow_html=True)
 
-        tasa_display = "0.007% M.V."
+        tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
 
         st.markdown(f"""
         <div class="softr-card" style="margin-bottom: 20px;">
@@ -651,6 +661,7 @@ else:
         n = plazo_sim
         P = monto_sim
 
+        # Cálculo de cuota fija (Sistema Francés)
         if i > 0:
             cuota_exacta = P * (i * (1 + i)**n) / ((1 + i)**n - 1)
         else:
@@ -687,7 +698,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        # Tabla proyectada ajustada
+        # Tabla proyectada
         st.markdown('<div class="section-header-title">📅 PROYECCIÓN PASO A PASO</div>', unsafe_allow_html=True)
 
         saldo = float(P)
