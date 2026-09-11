@@ -11,8 +11,8 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Tasa de interés mensual predeterminada (0.7% M.V.)
-TASA_MENSUAL_DEFAULT = 0.007
+# Tasa de interés mensual predeterminada (0.007% M.V.)
+TASA_MENSUAL_DEFAULT = 0.00007
 
 def get_image_base64(file_path):
     if os.path.exists(file_path):
@@ -167,6 +167,16 @@ st.markdown("""
         display: inline-block;
         background-color: #dcfce7;
         color: #15803d;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .status-tag-red {
+        display: inline-block;
+        background-color: #fee2e2;
+        color: #991b1b;
         padding: 4px 12px;
         border-radius: 12px;
         font-size: 0.95rem;
@@ -420,6 +430,7 @@ else:
                 saldo_pendiente_est = 0.0
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
+                proxima_cuota = pd.DataFrame()
 
                 if "usuario" in df_amort.columns:
                     df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
@@ -467,9 +478,24 @@ else:
                     if not resumen_user.empty:
                         monto = limpiar_numero(resumen_user["monto"].iloc[0])
                         plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
-                        tasa = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
+                        tasa_raw = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                         cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
-                        tasa_fmt = f"{tasa*100:.2f}%" if tasa < 1 else f"{tasa:.2f}%"
+
+                        # CORRECCIÓN DE TASA:
+                        # Si viene en decimal (ej. 0.00007 o 0.007) o en porcentaje (0.7)
+                        if tasa_raw < 0.01:
+                            tasa_porcentaje_mv = tasa_raw * 100
+                        else:
+                            tasa_porcentaje_mv = tasa_raw
+
+                        tasa_fmt = f"{tasa_porcentaje_mv:.3f}%"
+                        tasa_anual_fmt = f"{(tasa_porcentaje_mv * 12):.3f}%"
+
+                        # CORRECCIÓN DE ESTADO DEL CRÉDITO DINÁMICO:
+                        if estado_proxima_str != "🎉 Completado" and not proxima_cuota.empty:
+                            estado_credito_html = '<span class="status-tag-red">🔴 Pendiente / Mora</span>'
+                        else:
+                            estado_credito_html = '<span class="status-tag-green">🟢 Al día</span>'
 
                         st.markdown(f"""
                         <div class="softr-card">
@@ -496,11 +522,11 @@ else:
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Tasa Anual Estimada:</div>
-                                    <div class="metric-item-val">{(tasa*12)*100 if tasa < 1 else tasa*12:.2f}%</div>
+                                    <div class="metric-item-val">{tasa_anual_fmt}</div>
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Estado del Crédito:</div>
-                                    <div class="metric-item-val"><span class="status-tag-green">🟢 Al día</span></div>
+                                    <div class="metric-item-val">{estado_credito_html}</div>
                                 </div>
                             </div>
                         </div>
@@ -527,13 +553,13 @@ else:
                             <div class="metric-item-val">${saldo_pendiente_est:,.0f}</div>
                         </div>
                     </div>
-                    <div class="progress-section">
-                        <div class="progress-header">
-                            <span class="progress-title-text">Progreso Actual de Amortización</span>
-                            <span class="progress-badge">{pct_val:.1f}% Pagado</span>
+                    <div class="progress-section" style="margin-top:20px;">
+                        <div class="progress-header" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                            <span class="progress-title-text" style="font-weight:700; color:#0f172a;">Progreso Actual de Amortización</span>
+                            <span class="progress-badge" style="font-weight:800; color:#2563eb;">{pct_val:.1f}% Pagado</span>
                         </div>
-                        <div class="progress-track">
-                            <div class="progress-fill" style="width: {pct_val:.1f}%;"></div>
+                        <div class="progress-track" style="background:#e2e8f0; height:12px; border-radius:6px; overflow:hidden;">
+                            <div class="progress-fill" style="width: {pct_val:.1f}%; background:#2563eb; height:100%;"></div>
                         </div>
                     </div>
                 </div>
@@ -588,7 +614,7 @@ else:
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<div class="dashboard-title">🧮 Simulador de Crédito FEDESO</div>', unsafe_allow_html=True)
 
-        tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
+        tasa_display = "0.007% M.V."
 
         st.markdown(f"""
         <div class="softr-card" style="margin-bottom: 20px;">
@@ -625,15 +651,11 @@ else:
         n = plazo_sim
         P = monto_sim
 
-        # Ajuste de cálculo para la simulación exacta del modelo original ($226.984)
-        if monto_sim == 5000000 and plazo_sim == 24 and i == 0.007:
-            cuota_sim = 226984
+        if i > 0:
+            cuota_exacta = P * (i * (1 + i)**n) / ((1 + i)**n - 1)
         else:
-            if i > 0:
-                cuota_exacta = P * (i * (1 + i)**n) / ((1 + i)**n - 1)
-            else:
-                cuota_exacta = P / n
-            cuota_sim = round(cuota_exacta)
+            cuota_exacta = P / n
+        cuota_sim = round(cuota_exacta)
 
         fecha_inicio = datetime.now()
         fecha_fin = fecha_inicio + relativedelta(months=n)
