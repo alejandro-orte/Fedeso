@@ -12,7 +12,7 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-TASA_MENSUAL_DEFAULT = 0.007
+TASA_MENSUAL_DEFAULT = 0.0007
 
 MESES_MAP = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
