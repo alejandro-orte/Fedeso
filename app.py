@@ -276,7 +276,7 @@ else:
                     amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"].copy()
                     total_cuotas = len(amort_cuotas)
 
-                    # Cuotas según estado
+                    # Normalización del estado
                     estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
                     cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
                     num_pagadas = len(cuotas_pagadas_df)
@@ -294,23 +294,43 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # --- LÓGICA DE DETECCION DE ESTADO GENERAL ---
-                    # 1. Obtenemos la primera cuota que no está pagada
-                    if not proxima_cuota.empty:
-                        est_primer_pendiente = proxima_cuota.iloc[0]["estado"].lower().strip()
+                    # --- EVALUACIÓN PRECISA DEL MES ACTUAL ---
+                    hoy = datetime.date.today()
+                    col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
+                    
+                    cuota_mes_actual_pagada = False
+                    hay_cuotas_vencidas = False
+
+                    if col_fecha:
+                        amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce")
                         
-                        # Si el texto directo de la base dice mora, o si la primera pendiente no está pagada:
-                        if "mora" in est_primer_pendiente or "atras" in est_primer_pendiente:
-                            badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-                        elif "pendiente" in est_primer_pendiente or "curso" in est_primer_pendiente:
-                            badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
-                        else:
-                            badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                        # Cuotas anteriores a este mes sin pagar
+                        cuotas_pasadas_pendientes = amort_cuotas[
+                            (amort_cuotas["fecha_dt"].dt.date < hoy.replace(day=1)) &
+                            (~estados_limpios.isin(["pagado", "pagada", "al dia", "al día"]))
+                        ]
+                        if not cuotas_pasadas_pendientes.empty:
+                            hay_cuotas_vencidas = True
+
+                        # Cuota específica del mes en curso
+                        cuota_actual = amort_cuotas[
+                            (amort_cuotas["fecha_dt"].dt.month == hoy.month) &
+                            (amort_cuotas["fecha_dt"].dt.year == hoy.year)
+                        ]
+                        if not cuota_actual.empty:
+                            est_actual = cuota_actual.iloc[0]["estado"].lower().strip()
+                            if est_actual in ["pagado", "pagada", "al dia", "al día"]:
+                                cuota_mes_actual_pagada = True
+
+                    # Asignación del badge general según las condiciones
+                    if total_cuotas > 0 and num_pagadas == total_cuotas:
+                        badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
+                    elif hay_cuotas_vencidas:
+                        badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                    elif cuota_mes_actual_pagada or (not proxima_cuota.empty and proxima_cuota.iloc[0].get("fecha_dt") and proxima_cuota.iloc[0]["fecha_dt"].date() > hoy):
+                        badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                     else:
-                        if total_cuotas > 0 and num_pagadas == total_cuotas:
-                            badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
-                        else:
-                            badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+                        badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
 
                 # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
                 if "usuario" in df_resumen.columns:
