@@ -173,7 +173,7 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* ESTILOS DE LA BARRA DE PROGRESO (Añadido) */
+    /* ESTILOS DE LA BARRA DE PROGRESO */
     .progress-section {
         margin-top: 25px;
         padding-top: 15px;
@@ -302,7 +302,7 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
     return res.str.lower() if minusculas else res
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def cargar_usuarios() -> pd.DataFrame:
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Usuarios"
     df = pd.read_csv(url, dtype=str)
@@ -310,7 +310,7 @@ def cargar_usuarios() -> pd.DataFrame:
     return df
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
     df = pd.read_csv(url, dtype=str)
@@ -456,6 +456,9 @@ else:
                 saldo_pendiente_est = 0.0
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
+                
+                # Estado general del crédito (Por defecto Al día)
+                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_amort.columns:
                     df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
@@ -472,17 +475,32 @@ else:
                         else:
                             amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
-                        amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"]
+                        amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"].copy()
                         total_cuotas = len(amort_cuotas)
 
+                        # Clasificación de estados
+                        estados_limpios = amort_cuotas["estado"].str.lower()
+                        
                         cuotas_pagadas_df = amort_cuotas[
-                            amort_cuotas["estado"].str.lower().isin(["pagado", "al dia", "al día"])
+                            estados_limpios.isin(["pagado", "al dia", "al día"])
                         ]
                         num_pagadas = len(cuotas_pagadas_df)
 
-                        proxima_cuota = amort_cuotas[
-                            ~amort_cuotas["estado"].str.lower().isin(["pagado", "al dia", "al día"])
+                        # Verificar si hay mora o cuotas pendientes
+                        cuotas_mora = amort_cuotas[
+                            estados_limpios.str.contains("debe|mora|atrasad|vencid", regex=True)
                         ]
+
+                        proxima_cuota = amort_cuotas[
+                            ~estados_limpios.isin(["pagado", "al dia", "al día"])
+                        ]
+
+                        # EVALUACIÓN DINÁMICA DEL ESTADO DEL PRÉSTAMO
+                        if not cuotas_mora.empty:
+                            badge_estado_credito = '<span style="display: inline-block; background-color: #fee2e2; color: #dc2626; padding: 4px 12px; border-radius: 12px; font-size: 0.95rem; font-weight: 700;">🔴 En Mora</span>'
+                        elif not proxima_cuota.empty:
+                            badge_estado_credito = '<span style="display: inline-block; background-color: #fef3c7; color: #d97706; padding: 4px 12px; border-radius: 12px; font-size: 0.95rem; font-weight: 700;">🟡 Pendiente</span>'
+
                         if not proxima_cuota.empty:
                             mes_actual = proxima_cuota.iloc[0].get("mes_año", "N/A")
                             num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
@@ -536,7 +554,7 @@ else:
                                 </div>
                                 <div>
                                     <div class="metric-item-label">Estado del Crédito:</div>
-                                    <div class="metric-item-val"><span class="status-tag-green">🟢 Al día</span></div>
+                                    <div class="metric-item-val">{badge_estado_credito}</div>
                                 </div>
                             </div>
                         </div>
@@ -596,6 +614,8 @@ else:
                         val_str = str(val).lower()
                         if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
                             return "🟢 Pagado"
+                        elif "debe" in val_str or "mora" in val_str or "vencid" in val_str:
+                            return "🔴 Debe"
                         elif "pendiente" in val_str or "curso" in val_str:
                             return "🟡 Pendiente"
                         return val
