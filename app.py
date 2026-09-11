@@ -36,7 +36,30 @@ st.set_page_config(
 # =========================================================
 st.markdown("""
 <style>
-    /* Estilos globales y badges */
+    .card {
+        background-color: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        margin-bottom: 20px;
+        border: 1px solid #f0f0f0;
+    }
+    .metric-container {
+        display: flex;
+        flex-direction: column;
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: #6b7280;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .metric-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #111827;
+    }
     .status-tag-green {
         display: inline-block;
         background-color: #dcfce7;
@@ -63,6 +86,14 @@ st.markdown("""
         border-radius: 12px;
         font-size: 0.95rem;
         font-weight: 700;
+    }
+    .header-box {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -162,7 +193,15 @@ else:
     # BARRA LATERAL IZQUIERDA
     with st.sidebar:
         st.markdown(
-            f"👤 **{st.session_state['nombre']}**\n\nPanel de Asociado",
+            f"""
+            <div style="text-align: center; padding: 10px 0;">
+                <img src="{LOGO_URL}" width="140"><br><br>
+                <div style="background-color: #f3f4f6; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                    <span style="font-size: 0.85rem; color: #6b7280;">Bienvenido(a)</span><br>
+                    <strong style="color: #111827; font-size: 1rem;">👤 {st.session_state['nombre']}</strong>
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True
         )
         st.subheader("⚙️ Menú Principal")
@@ -184,13 +223,26 @@ else:
             st.rerun()
 
     # ENCABEZADO SUPERIOR COMÚN
-    st.markdown("FEDESO - Fondo Empresarial de Solidaridad")
+    st.markdown(
+        f"""
+        <div class="header-box" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2 style="margin:0; color:white; font-size: 1.5rem;">FEDESO</h2>
+                <span style="font-size: 0.9rem; opacity: 0.9;">Fondo Empresarial de Solidaridad</span>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 0.85rem; opacity: 0.8;">Portal de Asociados</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     # ---------------------------------------------------------
     # OPCIÓN A: DASHBOARD / ESTADO DE CUENTA
     # ---------------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
-        st.markdown("### Mi Estado de Cuenta FEDESO")
+        st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
         usuario_key = st.session_state["usuario"]
 
         try:
@@ -205,6 +257,7 @@ else:
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
                 proxima_cuota = pd.DataFrame()
+                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_amort.columns:
                     df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
@@ -224,12 +277,11 @@ else:
                     amort_cuotas = amort_user[amort_user["cuota_num"].astype(str) != "0"].copy()
                     total_cuotas = len(amort_cuotas)
 
-                    # --- LÓGICA DE ESTADO DEL CRÉDITO POR MES ACTUAL ---
+                    # --- EVALUACIÓN DE MES ACTUAL ---
                     hoy = datetime.date.today()
                     mes_actual = hoy.month
                     anio_actual = hoy.year
 
-                    # Convertir la columna de fechas a datetime si viene disponible (ej. mes_año o fecha_pago)
                     col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
                     if col_fecha:
                         amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce")
@@ -257,7 +309,7 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # Determinar insignia de Estado de Crédito por Mes
+                    # Badge visual del estado por mes
                     if not cuota_mes_actual.empty:
                         est_mes = cuota_mes_actual["estado"].astype(str).str.lower().str.strip().iloc[0]
                         if est_mes in ["pagado", "pagada", "al dia", "al día"]:
@@ -282,36 +334,81 @@ else:
                         tasa_raw = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
                         cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
 
-                        # Normalización de tasa (ej. 0.7 -> 0.7% o 0.007 -> 0.7%)
                         tasa_porcentaje_mv = tasa_raw / 100 if tasa_raw >= 1 else (tasa_raw * 100 if tasa_raw < 0.01 else tasa_raw)
                         tasa_fmt = f"{tasa_porcentaje_mv:.2f}%"
                         tasa_anual_fmt = f"{(tasa_porcentaje_mv * 12):.2f}%"
 
                         st.markdown(f"""
-                        📊 RESUMEN DE PRÉSTAMO | 👤 {st.session_state['nombre']}
-
-                        **Monto del Préstamo:** ${monto:,.0f}  
-                        **Plazo (Meses):** {plazo} meses  
-                        **Tasa M.V.:** {tasa_fmt}  
-                        **Cuota Mensual:** ${cuota:,.0f}  
-                        **Tasa Anual Estimada:** {tasa_anual_fmt}  
-                        **Estado del Crédito:** {badge_estado_credito}
+                        <div class="card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 15px;">
+                                <h4 style="margin:0; color:#1e3a8a;">📊 RESUMEN DE PRÉSTAMO</h4>
+                                <span style="font-size: 0.85rem; color:#6b7280;">Asociado: <strong>{st.session_state['nombre']}</strong></span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
+                                <div class="metric-container">
+                                    <span class="metric-label">Monto del Préstamo</span>
+                                    <span class="metric-value">${monto:,.0f}</span>
+                                </div>
+                                <div class="metric-container">
+                                    <span class="metric-label">Plazo (Meses)</span>
+                                    <span class="metric-value">{plazo} meses</span>
+                                </div>
+                                <div class="metric-container">
+                                    <span class="metric-label">Tasa M.V.</span>
+                                    <span class="metric-value">{tasa_fmt}</span>
+                                </div>
+                                <div class="metric-container">
+                                    <span class="metric-label">Cuota Mensual</span>
+                                    <span class="metric-value" style="color:#1e3a8a;">${cuota:,.0f}</span>
+                                </div>
+                                <div class="metric-container">
+                                    <span class="metric-label">Tasa Anual Estimada</span>
+                                    <span class="metric-value">{tasa_anual_fmt}</span>
+                                </div>
+                                <div class="metric-container">
+                                    <span class="metric-label">Estado del Crédito</span>
+                                    <div style="margin-top: 4px;">{badge_estado_credito}</div>
+                                </div>
+                            </div>
+                        </div>
                         """, unsafe_allow_html=True)
 
                 # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO ---
                 pct_val = porcentaje_progreso * 100
                 st.markdown(f"""
-                📊 **ESTADO DE PAGOS Y PROGRESO**
-
-                - **Progreso de Pago:** {num_pagadas} de {total_cuotas} cuotas
-                - **Próximo Mes a Pagar:** {estado_proxima_str}
-                - **Saldo Pendiente Estimado:** ${saldo_pendiente_est:,.0f}
-                - **Progreso Actual de Amortización:** {pct_val:.1f}% Pagado
+                <div class="card">
+                    <h4 style="margin-top:0; color:#1e3a8a; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 15px;">
+                        📊 ESTADO DE PAGOS Y PROGRESO
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                        <div class="metric-container">
+                            <span class="metric-label">Progreso de Pago</span>
+                            <span class="metric-value">{num_pagadas} <span style="font-size:0.9rem; font-weight:normal; color:#6b7280;">de {total_cuotas} cuotas</span></span>
+                        </div>
+                        <div class="metric-container">
+                            <span class="metric-label">Próximo Mes a Pagar</span>
+                            <span class="metric-value" style="font-size: 1.1rem; color: #b45309;">{estado_proxima_str}</span>
+                        </div>
+                        <div class="metric-container">
+                            <span class="metric-label">Saldo Pendiente Estimado</span>
+                            <span class="metric-value">${saldo_pendiente_est:,.0f}</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #6b7280; font-weight: 600; margin-bottom: 5px;">
+                            <span>Progreso Actual de Amortización</span>
+                            <span>{pct_val:.1f}% Pagado</span>
+                        </div>
+                        <div style="background-color: #e5e7eb; border-radius: 10px; height: 10px; width: 100%; overflow: hidden;">
+                            <div style="background-color: #2563eb; width: {pct_val}%; height: 100%; border-radius: 10px;"></div>
+                        </div>
+                    </div>
+                </div>
                 """, unsafe_allow_html=True)
 
                 # --- TARJETA 3: TABLA PLAN DE PAGOS (AMORTIZACIÓN) ---
                 if not amort_user.empty:
-                    st.markdown("📅 PLAN DE PAGOS (AMORTIZACIONES)")
+                    st.markdown('<h4 style="color:#1e3a8a; margin-top:25px; margin-bottom:10px;">📅 PLAN DE PAGOS (AMORTIZACIONES)</h4>', unsafe_allow_html=True)
                     cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
                     tabla_mostrar = amort_user[cols_existentes].copy()
                     renombrar = {
@@ -353,9 +450,14 @@ else:
     # OPCIÓN B: SIMULADOR DE CRÉDITO INTERACTIVO
     # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "simulador":
-        st.markdown("🧮 Simulador de Crédito FEDESO")
+        st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
         tasa_display = "0.007% M.V."
-        st.markdown(f"💡 CALCULADORA DE CUOTAS (Tasa de interés: {tasa_display})")
+
+        st.markdown(f"""
+        <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe;">
+            <span style="color: #1e40af; font-size: 0.95rem;">💡 <strong>CALCULADORA DE CUOTAS:</strong> Diseña tu plan de crédito ideal. Tasa de interés mensual aplicada: <strong>{tasa_display}</strong></span>
+        </div>
+        """, unsafe_allow_html=True)
 
         col_monto, col_plazo = st.columns(2)
         with col_monto:
@@ -383,14 +485,26 @@ else:
         fecha_fin_str = f"{meses_esp[fecha_fin.month - 1]} de {fecha_fin.year}"
 
         st.markdown(f"""
-        📊 **RESULTADO DE LA SIMULACIÓN**
-
-        - **Cuota Mensual Estimada:** ${cuota_sim:,.0f}
-        - **Fecha de Finalización:** {fecha_fin_str}
-        - **Total a Pagar:** ${cuota_sim * n:,.0f}
+        <div class="card" style="background-color: #f8fafc; border-left: 4px solid #2563eb;">
+            <h4 style="margin-top:0; color:#1e3a8a; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">📊 RESULTADO DE LA SIMULACIÓN</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;">
+                <div class="metric-container">
+                    <span class="metric-label">Cuota Mensual Estimada</span>
+                    <span class="metric-value" style="color:#2563eb; font-size: 1.4rem;">${cuota_sim:,.0f}</span>
+                </div>
+                <div class="metric-container">
+                    <span class="metric-label">Fecha de Finalización</span>
+                    <span class="metric-value" style="font-size: 1.1rem;">{fecha_fin_str}</span>
+                </div>
+                <div class="metric-container">
+                    <span class="metric-label">Total a Pagar</span>
+                    <span class="metric-value">${cuota_sim * n:,.0f}</span>
+                </div>
+            </div>
+        </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("📅 PROYECCIÓN PASO A PASO")
+        st.markdown('<h4 style="color:#1e3a8a; margin-top:20px; margin-bottom:10px;">📅 PROYECCIÓN PASO A PASO</h4>', unsafe_allow_html=True)
         saldo = float(P)
         cronograma = []
         for cuota_n in range(1, n + 1):
