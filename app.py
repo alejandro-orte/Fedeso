@@ -12,7 +12,6 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-# Tasa de interés mensual predeterminada (0.007% M.V.)
 TASA_MENSUAL_DEFAULT = 0.00007
 
 MESES_MAP = {
@@ -23,18 +22,20 @@ MESES_MAP = {
 }
 
 def parsear_fecha_flexible(texto):
-    """Parsea formatos como 'oct-26', '15/10/2026', '2026-10-15', etc."""
+    """Parsea textos tipo 'oct-26', '15/10/2026', '2026-10-15', 'octubre-2026'."""
     if pd.isna(texto) or not str(texto).strip():
         return None
     val = str(texto).strip().lower()
     
-    # Intento 1: Parseo estándar de Pandas
+    # Intento 1: Parseo nativo de pandas
     res = pd.to_datetime(val, errors="coerce", dayfirst=True)
     if pd.notna(res):
         return res.date()
         
-    # Intento 2: Formatos de texto tipo 'oct-26' o 'sep-2026'
-    parts = val.replace('/', '-').replace('.', '').split('-')
+    # Intento 2: Parseo de abreviaturas tipo oct-26 o sep-2026
+    parts = val.replace('/', '-').replace('.', '').replace(' ', '-').split('-')
+    parts = [p for p in parts if p]
+    
     if len(parts) >= 2:
         mes_str = parts[0].strip()
         anio_str = parts[-1].strip()
@@ -42,6 +43,7 @@ def parsear_fecha_flexible(texto):
             m = MESES_MAP[mes_str]
             y = int(anio_str) if len(anio_str) == 4 else 2000 + int(anio_str)
             return datetime.date(y, m, 1)
+            
     return None
 
 def get_image_base64(file_path):
@@ -171,7 +173,7 @@ if "pantalla" not in st.session_state:
     st.session_state["pantalla"] = "dashboard"
 
 # =========================================================
-# 1. PANTALLA DE LOGIN
+# 1. LOGIN
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -216,10 +218,9 @@ if not st.session_state["autenticado"]:
                             st.error(f"Error al conectar: {e}")
 
 # =========================================================
-# 2. PANTALLA INTERNA
+# 2. PANTALLA PRINCIPAL
 # =========================================================
 else:
-    # BARRA LATERAL IZQUIERDA
     with st.sidebar:
         st.markdown(
             f"""
@@ -251,7 +252,6 @@ else:
             st.session_state["pantalla"] = "dashboard"
             st.rerun()
 
-    # ENCABEZADO SUPERIOR COMÚN
     st.markdown(
         f"""
         <div class="header-box" style="display: flex; justify-content: space-between; align-items: center;">
@@ -267,9 +267,6 @@ else:
         unsafe_allow_html=True
     )
 
-    # ---------------------------------------------------------
-    # OPCIÓN A: DASHBOARD / ESTADO DE CUENTA
-    # ---------------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
         usuario_key = st.session_state["usuario"]
@@ -302,13 +299,13 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
-                    # Excluir de forma estricta la cuota 0 (desembolso/registro inicial)
+                    # Excluir la cuota 0
                     amort_cuotas = amort_user[
                         ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
                     ].copy()
                     total_cuotas = len(amort_cuotas)
 
-                    # Normalización del estado
+                    # Filtrar pagadas
                     estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
                     cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
                     num_pagadas = len(cuotas_pagadas_df)
@@ -326,40 +323,34 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # --- EVALUACIÓN ROBUSTA DE MORA / AL DÍA ---
+                    # --- NUEVA LÓGICA DIRECTA Y RIGUROSA PARA ESTADO DEL CRÉDITO ---
                     hoy = datetime.date.today()
-                    primer_dia_mes_actual = datetime.date(hoy.year, hoy.month, 1)
+                    mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
-                    col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
-
-                    hay_cuotas_vencidas = False
-
-                    if col_fecha and not proxima_cuota.empty:
-                        # Evaluar las cuotas pendientes para verificar si hay alguna de un mes pasado
-                        for _, row in proxima_cuota.iterrows():
-                            fecha_parsed = parsear_fecha_flexible(row.get(col_fecha))
-                            if fecha_parsed:
-                                primer_dia_cuota = datetime.date(fecha_parsed.year, fecha_parsed.month, 1)
-                                if primer_dia_cuota < primer_dia_mes_actual:
-                                    hay_cuotas_vencidas = True
-                                    break
-
-                    # Determinación jerárquica de la insignia de estado
                     if total_cuotas > 0 and num_pagadas >= total_cuotas:
                         badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
-                    elif hay_cuotas_vencidas:
-                        badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
                     elif proxima_cuota.empty:
                         badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                     else:
-                        # Si la próxima cuota a pagar pertenece a un mes futuro (ej. octubre estando en septiembre)
-                        fecha_prox = parsear_fecha_flexible(proxima_cuota.iloc[0].get(col_fecha, "")) if col_fecha else None
-                        if fecha_prox and datetime.date(fecha_prox.year, fecha_prox.month, 1) > primer_dia_mes_actual:
-                            badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-                        elif fecha_prox and datetime.date(fecha_prox.year, fecha_prox.month, 1) == primer_dia_mes_actual:
-                            badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                        # Evaluamos la primera cuota pendiente
+                        col_fecha = "mes_año" if "mes_año" in proxima_cuota.columns else ("fecha_pago" if "fecha_pago" in proxima_cuota.columns else None)
+                        
+                        if col_fecha:
+                            texto_fecha_prox = proxima_cuota.iloc[0].get(col_fecha, "")
+                            fecha_prox_dt = parsear_fecha_flexible(texto_fecha_prox)
+                            
+                            if fecha_prox_dt:
+                                mes_cuota_inicio = datetime.date(fecha_prox_dt.year, fecha_prox_dt.month, 1)
+                                if mes_cuota_inicio < mes_actual_inicio:
+                                    badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                                elif mes_cuota_inicio == mes_actual_inicio:
+                                    badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                                else: # Mes futuro (ejemplo: octubre 2026 en septiembre 2026)
+                                    badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+                            else:
+                                # Si falla el parseo, la marcamos como al día por defecto para evitar falsa mora
+                                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                         else:
-                            # Por defecto, si el pago de este mes está hecho o adelantado
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
@@ -445,7 +436,7 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # --- TARJETA 3: TABLA PLAN DE PAGOS (AMORTIZACIÓN) ---
+                # --- TARJETA 3: TABLA PLAN DE PAGOS ---
                 if not amort_user.empty:
                     st.markdown('<h4 style="color:#1e3a8a; margin-top:25px; margin-bottom:10px;">📅 PLAN DE PAGOS (AMORTIZACIONES)</h4>', unsafe_allow_html=True)
                     cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
@@ -487,9 +478,6 @@ else:
         except Exception as e:
             st.error(f"Error al procesar la información: {e}")
 
-    # ---------------------------------------------------------
-    # OPCIÓN B: SIMULADOR DE CRÉDITO INTERACTIVO
-    # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
         tasa_display = "0.007% M.V."
