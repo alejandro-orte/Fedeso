@@ -22,17 +22,12 @@ MESES_MAP = {
 }
 
 def parsear_fecha_flexible(texto):
-    """Parsea textos tipo 'oct-26', '15/10/2026', '2026-10-15', 'octubre-2026'."""
+    """Convierte cadenas como 'oct-26', '10/2026', '2026-10-15' a fecha de inicio de mes."""
     if pd.isna(texto) or not str(texto).strip():
         return None
     val = str(texto).strip().lower()
     
-    # Intento 1: Parseo nativo de pandas
-    res = pd.to_datetime(val, errors="coerce", dayfirst=True)
-    if pd.notna(res):
-        return res.date()
-        
-    # Intento 2: Parseo de abreviaturas tipo oct-26 o sep-2026
+    # Intento 1: Parseo de abreviaturas tipo oct-26 o sep-26
     parts = val.replace('/', '-').replace('.', '').replace(' ', '-').split('-')
     parts = [p for p in parts if p]
     
@@ -43,6 +38,11 @@ def parsear_fecha_flexible(texto):
             m = MESES_MAP[mes_str]
             y = int(anio_str) if len(anio_str) == 4 else 2000 + int(anio_str)
             return datetime.date(y, m, 1)
+
+    # Intento 2: Parseo estándar pandas
+    res = pd.to_datetime(val, errors="coerce", dayfirst=True)
+    if pd.notna(res):
+        return datetime.date(res.year, res.month, 1)
             
     return None
 
@@ -63,7 +63,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS PERSONALIZADOS
+# ESTILOS CSS
 # =========================================================
 st.markdown("""
 <style>
@@ -130,7 +130,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# FUNCIONES DE UTILIDAD Y CARGA DE DATOS
+# FUNCIONES AUXILIARES
 # =========================================================
 def limpiar_numero(valor):
     if pd.isna(valor):
@@ -173,7 +173,7 @@ if "pantalla" not in st.session_state:
     st.session_state["pantalla"] = "dashboard"
 
 # =========================================================
-# 1. LOGIN
+# LOGIN
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -218,7 +218,7 @@ if not st.session_state["autenticado"]:
                             st.error(f"Error al conectar: {e}")
 
 # =========================================================
-# 2. PANTALLA PRINCIPAL
+# DASHBOARD INTERNO
 # =========================================================
 else:
     with st.sidebar:
@@ -282,6 +282,8 @@ else:
                 saldo_pendiente_est = 0.0
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
+                
+                # Estado por defecto
                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_amort.columns:
@@ -311,6 +313,7 @@ else:
                     num_pagadas = len(cuotas_pagadas_df)
 
                     proxima_cuota = amort_cuotas[~estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
+                    
                     if not proxima_cuota.empty:
                         mes_proximo = proxima_cuota.iloc[0].get("mes_año", "N/A")
                         num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
@@ -323,7 +326,9 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # --- NUEVA LÓGICA DIRECTA Y RIGUROSA PARA ESTADO DEL CRÉDITO ---
+                    # =========================================================
+                    # ESTABLECER ESTADO DE FORMA DINÁMICA (IGNORA TEXTO MANUAL)
+                    # =========================================================
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
@@ -332,23 +337,15 @@ else:
                     elif proxima_cuota.empty:
                         badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                     else:
-                        # Evaluamos la primera cuota pendiente
-                        col_fecha = "mes_año" if "mes_año" in proxima_cuota.columns else ("fecha_pago" if "fecha_pago" in proxima_cuota.columns else None)
-                        
-                        if col_fecha:
-                            texto_fecha_prox = proxima_cuota.iloc[0].get(col_fecha, "")
-                            fecha_prox_dt = parsear_fecha_flexible(texto_fecha_prox)
-                            
-                            if fecha_prox_dt:
-                                mes_cuota_inicio = datetime.date(fecha_prox_dt.year, fecha_prox_dt.month, 1)
-                                if mes_cuota_inicio < mes_actual_inicio:
-                                    badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-                                elif mes_cuota_inicio == mes_actual_inicio:
-                                    badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
-                                else: # Mes futuro (ejemplo: octubre 2026 en septiembre 2026)
-                                    badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-                            else:
-                                # Si falla el parseo, la marcamos como al día por defecto para evitar falsa mora
+                        texto_fecha_prox = str(proxima_cuota.iloc[0].get("mes_año", "")).strip()
+                        fecha_prox_dt = parsear_fecha_flexible(texto_fecha_prox)
+
+                        if fecha_prox_dt:
+                            if fecha_prox_dt < mes_actual_inicio:
+                                badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                            elif fecha_prox_dt == mes_actual_inicio:
+                                badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                            else: # Fecha mayor al mes actual (ej: Octubre 2026 estando en Septiembre 2026)
                                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
