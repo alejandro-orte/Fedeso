@@ -15,6 +15,35 @@ FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlf
 # Tasa de interés mensual predeterminada (0.007% M.V.)
 TASA_MENSUAL_DEFAULT = 0.00007
 
+MESES_MAP = {
+    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+    "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12,
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+}
+
+def parsear_fecha_flexible(texto):
+    """Parsea formatos como 'oct-26', '15/10/2026', '2026-10-15', etc."""
+    if pd.isna(texto) or not str(texto).strip():
+        return None
+    val = str(texto).strip().lower()
+    
+    # Intento 1: Parseo estándar de Pandas
+    res = pd.to_datetime(val, errors="coerce", dayfirst=True)
+    if pd.notna(res):
+        return res.date()
+        
+    # Intento 2: Formatos de texto tipo 'oct-26' o 'sep-2026'
+    parts = val.replace('/', '-').replace('.', '').split('-')
+    if len(parts) >= 2:
+        mes_str = parts[0].strip()
+        anio_str = parts[-1].strip()
+        if mes_str in MESES_MAP:
+            m = MESES_MAP[mes_str]
+            y = int(anio_str) if len(anio_str) == 4 else 2000 + int(anio_str)
+            return datetime.date(y, m, 1)
+    return None
+
 def get_image_base64(file_path):
     if os.path.exists(file_path):
         with open(file_path, "rb") as image_file:
@@ -32,7 +61,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS PERSONALIZADOS Y MEJORAS DE VISUALIZACIÓN
+# ESTILOS CSS PERSONALIZADOS
 # =========================================================
 st.markdown("""
 <style>
@@ -297,46 +326,41 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # --- EVALUACIÓN PRECISA Y ROBUSTA DEL ESTADO DE CRÉDITO ---
+                    # --- EVALUACIÓN ROBUSTA DE MORA / AL DÍA ---
                     hoy = datetime.date.today()
-                    primer_dia_mes_actual = hoy.replace(day=1)
+                    primer_dia_mes_actual = datetime.date(hoy.year, hoy.month, 1)
 
                     col_fecha = "fecha_pago" if "fecha_pago" in amort_cuotas.columns else ("mes_año" if "mes_año" in amort_cuotas.columns else None)
 
-                    cuota_mes_actual_pagada = False
                     hay_cuotas_vencidas = False
 
-                    if col_fecha:
-                        # Parsing flexible de fecha reconociendo el formato de día primero
-                        amort_cuotas["fecha_dt"] = pd.to_datetime(amort_cuotas[col_fecha], errors="coerce", dayfirst=True)
-                        es_pagado = estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])
-
-                        # 1. Cuotas de meses ANTERIORES al mes actual que sigan pendientes
-                        cuotas_pasadas_pendientes = amort_cuotas[
-                            (amort_cuotas["fecha_dt"].dt.date < primer_dia_mes_actual) & (~es_pagado)
-                        ]
-                        if not cuotas_pasadas_pendientes.empty:
-                            hay_cuotas_vencidas = True
-
-                        # 2. Verificar si la cuota del mes en curso ya está pagada
-                        cuota_actual = amort_cuotas[
-                            (amort_cuotas["fecha_dt"].dt.month == hoy.month) &
-                            (amort_cuotas["fecha_dt"].dt.year == hoy.year)
-                        ]
-                        if not cuota_actual.empty:
-                            est_actual = cuota_actual.iloc[0]["estado"].lower().strip()
-                            if est_actual in ["pagado", "pagada", "al dia", "al día"]:
-                                cuota_mes_actual_pagada = True
+                    if col_fecha and not proxima_cuota.empty:
+                        # Evaluar las cuotas pendientes para verificar si hay alguna de un mes pasado
+                        for _, row in proxima_cuota.iterrows():
+                            fecha_parsed = parsear_fecha_flexible(row.get(col_fecha))
+                            if fecha_parsed:
+                                primer_dia_cuota = datetime.date(fecha_parsed.year, fecha_parsed.month, 1)
+                                if primer_dia_cuota < primer_dia_mes_actual:
+                                    hay_cuotas_vencidas = True
+                                    break
 
                     # Determinación jerárquica de la insignia de estado
                     if total_cuotas > 0 and num_pagadas >= total_cuotas:
                         badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
                     elif hay_cuotas_vencidas:
                         badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-                    elif proxima_cuota.empty or cuota_mes_actual_pagada:
+                    elif proxima_cuota.empty:
                         badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                     else:
-                        badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                        # Si la próxima cuota a pagar pertenece a un mes futuro (ej. octubre estando en septiembre)
+                        fecha_prox = parsear_fecha_flexible(proxima_cuota.iloc[0].get(col_fecha, "")) if col_fecha else None
+                        if fecha_prox and datetime.date(fecha_prox.year, fecha_prox.month, 1) > primer_dia_mes_actual:
+                            badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+                        elif fecha_prox and datetime.date(fecha_prox.year, fecha_prox.month, 1) == primer_dia_mes_actual:
+                            badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                        else:
+                            # Por defecto, si el pago de este mes está hecho o adelantado
+                            badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
                 if "usuario" in df_resumen.columns:
