@@ -12,7 +12,7 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-TASA_MENSUAL_DEFAULT = 0.0069865  # Tasa base por defecto (0.69865% M.V.)
+TASA_MENSUAL_DEFAULT = 0.0069865  # 0.7% Mensual Vencido
 
 MESES_MAP = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
@@ -21,17 +21,8 @@ MESES_MAP = {
     "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
 }
 
-def calcular_cuota_exacta(monto: float, plazo: int, tasa_mensual: float) -> int:
-    """Fórmula estandarizada equivalente a =REDONDEAR(PAGO(tasa; plazo; -monto); 0) de Google Sheets."""
-    if tasa_mensual <= 0 or plazo <= 0:
-        return round(monto / max(1, plazo))
-    
-    factor = (1 + tasa_mensual) ** plazo
-    cuota = monto * (tasa_mensual * factor) / (factor - 1)
-    return round(cuota)
-
 def parsear_fecha_flexible(texto):
-    """Convierte libremente strings como 'oct-26', '10/2026', 'octubre 2026' a fecha de inicio de mes."""
+    """Convierte libremente strings como 'oct-26', '10/2026', 'octubre 2026', '2026-10-15' a fecha de inicio de mes."""
     if pd.isna(texto) or not str(texto).strip():
         return None
     
@@ -41,6 +32,7 @@ def parsear_fecha_flexible(texto):
     
     parts = [p for p in val.split('-') if p]
     
+    # Intento 1: Reconocimiento por nombre de mes (ej: 'oct-26', '15-oct-2026', 'octubre-2026')
     if len(parts) >= 2:
         mes_cand = parts[0]
         anio_cand = parts[-1]
@@ -53,6 +45,7 @@ def parsear_fecha_flexible(texto):
             y = int(anio_cand) if len(anio_cand) == 4 else 2000 + int(anio_cand)
             return datetime.date(y, m, 1)
 
+    # Intento 2: Parseo estándar numérico de fecha
     res = pd.to_datetime(val, errors="coerce", dayfirst=True)
     if pd.notna(res):
         return datetime.date(res.year, res.month, 1)
@@ -80,6 +73,7 @@ st.set_page_config(
 # =========================================================
 st.markdown("""
 <style>
+    /* Estructura general de tarjetas */
     .card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -88,6 +82,8 @@ st.markdown("""
         margin-bottom: 22px;
         border: 1px solid #e5e7eb;
     }
+    
+    /* Indicadores numéricos */
     .metric-container {
         display: flex;
         flex-direction: column;
@@ -105,6 +101,8 @@ st.markdown("""
         font-weight: 700;
         color: #111827;
     }
+
+    /* Badges de Estado */
     .status-tag-green {
         display: inline-block;
         background-color: #dcfce7;
@@ -132,6 +130,8 @@ st.markdown("""
         font-size: 0.85rem;
         font-weight: 700;
     }
+
+    /* Header principal */
     .header-box {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
         color: white;
@@ -314,11 +314,13 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
+                    # Excluir la cuota 0
                     amort_cuotas = amort_user[
                         ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
                     ].copy()
                     total_cuotas = len(amort_cuotas)
 
+                    # Filtrar pagadas
                     estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
                     cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
                     num_pagadas = len(cuotas_pagadas_df)
@@ -337,6 +339,7 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
+                    # Evaluación dinámica del estado del crédito
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
@@ -367,16 +370,9 @@ else:
                         monto = limpiar_numero(resumen_user["monto"].iloc[0])
                         plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
                         tasa_raw = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
+                        cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
 
                         tasa_porcentaje_mv = tasa_raw / 100 if tasa_raw >= 1 else (tasa_raw * 100 if tasa_raw < 0.01 else tasa_raw)
-                        tasa_decimal = tasa_porcentaje_mv / 100
-                        
-                        # Sincronización de la tasa exacta en sesión para el simulador
-                        st.session_state["tasa_usuario"] = tasa_decimal
-
-                        # Recálculo exacto estandarizado de la cuota
-                        cuota = calcular_cuota_exacta(monto, plazo, tasa_decimal)
-
                         tasa_fmt = f"{tasa_porcentaje_mv:.2f}%"
                         tasa_anual_fmt = f"{(tasa_porcentaje_mv * 12):.2f}%"
 
@@ -491,14 +487,11 @@ else:
             st.error(f"Error al procesar la información: {e}")
 
     # =========================================================
-    # SIMULADOR DE CRÉDITO (SINCRONIZADO CON RESUMEN)
+    # SIMULADOR DE CRÉDITO (AMORTIZACIÓN EXACTA)
     # =========================================================
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
-        
-        # Tasa sincronizada con la del usuario si está autenticado
-        tasa_aplicada = st.session_state.get("tasa_usuario", TASA_MENSUAL_DEFAULT)
-        tasa_display = f"{tasa_aplicada * 100:.2f}% M.V."
+        tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
 
         st.markdown(f"""
         <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe;">
@@ -516,13 +509,18 @@ else:
                 "Plazo deseado (Meses)", min_value=1, max_value=120, value=24, step=1
             )
 
+        # Cálculo exacto de amortización bajo sistema francés
+        i = TASA_MENSUAL_DEFAULT
         n = int(plazo_sim)
         P = float(monto_sim)
-        i = tasa_aplicada
 
-        # Cálculo de cuota usando la función unificada
-        cuota_sim = calcular_cuota_exacta(P, n, i)
+        if i > 0:
+            factor = (1 + i)**n
+            cuota_exacta = P * (i * factor) / (factor - 1)
+        else:
+            cuota_exacta = P / n
 
+        cuota_sim = round(cuota_exacta)
         fecha_inicio = dt.now()
         fecha_fin = fecha_inicio + relativedelta(months=n)
         meses_esp = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -550,6 +548,7 @@ else:
 
         st.markdown('<h4 style="color:#1e3a8a; margin-top:20px; margin-bottom:10px;">📅 PROYECCIÓN PASO A PASO</h4>', unsafe_allow_html=True)
         
+        # Generación paso a paso de la tabla de amortización con cuadre exacto de última cuota
         saldo = P
         cronograma = []
 
@@ -559,6 +558,7 @@ else:
             interes_cuota = round(saldo * i)
 
             if cuota_n == n:
+                # Cierre exacto para garantización de Saldo $0
                 capital_cuota = round(saldo)
                 cuota_aplicada = capital_cuota + interes_cuota
                 saldo = 0.0
