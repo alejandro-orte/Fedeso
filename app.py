@@ -22,24 +22,30 @@ MESES_MAP = {
 }
 
 def parsear_fecha_flexible(texto):
-    """Convierte cadenas como 'oct-26', '10/2026', '2026-10-15' a fecha de inicio de mes."""
+    """Convierte libremente strings como 'oct-26', '10/2026', 'octubre 2026', '2026-10-15' a fecha de inicio de mes."""
     if pd.isna(texto) or not str(texto).strip():
         return None
+    
     val = str(texto).strip().lower()
+    for sep in ['/', '.', ' ']:
+        val = val.replace(sep, '-')
     
-    # Intento 1: Parseo de abreviaturas tipo oct-26 o sep-26
-    parts = val.replace('/', '-').replace('.', '').replace(' ', '-').split('-')
-    parts = [p for p in parts if p]
+    parts = [p for p in val.split('-') if p]
     
+    # Intento 1: Reconocimiento por nombre de mes (ej: 'oct-26', '15-oct-2026', 'octubre-2026')
     if len(parts) >= 2:
-        mes_str = parts[0].strip()
-        anio_str = parts[-1].strip()
-        if mes_str in MESES_MAP:
-            m = MESES_MAP[mes_str]
-            y = int(anio_str) if len(anio_str) == 4 else 2000 + int(anio_str)
+        mes_cand = parts[0]
+        anio_cand = parts[-1]
+        if mes_cand in MESES_MAP and anio_cand.isdigit():
+            m = MESES_MAP[mes_cand]
+            y = int(anio_cand) if len(anio_cand) == 4 else 2000 + int(anio_cand)
+            return datetime.date(y, m, 1)
+        elif len(parts) >= 3 and parts[1] in MESES_MAP and anio_cand.isdigit():
+            m = MESES_MAP[parts[1]]
+            y = int(anio_cand) if len(anio_cand) == 4 else 2000 + int(anio_cand)
             return datetime.date(y, m, 1)
 
-    # Intento 2: Parseo estándar pandas
+    # Intento 2: Parseo estándar numérico de fecha
     res = pd.to_datetime(val, errors="coerce", dayfirst=True)
     if pd.notna(res):
         return datetime.date(res.year, res.month, 1)
@@ -63,41 +69,47 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS
+# ESTILOS CSS - INTERFAZ LIMPIA Y MODERNA
 # =========================================================
 st.markdown("""
 <style>
+    /* Estructura general de tarjetas */
     .card {
         background-color: #ffffff;
         border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        margin-bottom: 20px;
-        border: 1px solid #f0f0f0;
+        padding: 22px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        margin-bottom: 22px;
+        border: 1px solid #e5e7eb;
     }
+    
+    /* Indicadores numéricos */
     .metric-container {
         display: flex;
         flex-direction: column;
     }
     .metric-label {
-        font-size: 0.85rem;
+        font-size: 0.80rem;
         color: #6b7280;
         font-weight: 600;
         text-transform: uppercase;
+        letter-spacing: 0.05em;
         margin-bottom: 4px;
     }
     .metric-value {
-        font-size: 1.25rem;
+        font-size: 1.30rem;
         font-weight: 700;
         color: #111827;
     }
+
+    /* Badges de Estado */
     .status-tag-green {
         display: inline-block;
         background-color: #dcfce7;
-        color: #166534;
+        color: #15803d;
         padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.95rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
         font-weight: 700;
     }
     .status-tag-yellow {
@@ -105,37 +117,39 @@ st.markdown("""
         background-color: #fef3c7;
         color: #b45309;
         padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.95rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
         font-weight: 700;
     }
     .status-tag-red {
         display: inline-block;
         background-color: #fee2e2;
-        color: #dc2626;
+        color: #b91c1c;
         padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.95rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
         font-weight: 700;
     }
+
+    /* Header principal */
     .header-box {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
         color: white;
-        padding: 15px 20px;
+        padding: 18px 24px;
         border-radius: 12px;
-        margin-bottom: 20px;
-        font-weight: bold;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 10px rgba(30, 58, 138, 0.15);
     }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES DE DATOS
 # =========================================================
 def limpiar_numero(valor):
-    if pd.isna(valor):
+    if pd.isna(valor) or valor is None:
         return 0.0
-    texto = str(valor).replace('$', '').replace(',', '').replace('%', '').strip()
+    texto = str(valor).replace('$', '').replace(',', '').replace('%', '').replace(' ', '').strip()
     try:
         return float(texto)
     except ValueError:
@@ -173,7 +187,7 @@ if "pantalla" not in st.session_state:
     st.session_state["pantalla"] = "dashboard"
 
 # =========================================================
-# LOGIN
+# LOGIN DE USUARIOS
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -218,7 +232,7 @@ if not st.session_state["autenticado"]:
                             st.error(f"Error al conectar: {e}")
 
 # =========================================================
-# DASHBOARD INTERNO
+# DASHBOARD PRINCIPAL
 # =========================================================
 else:
     with st.sidebar:
@@ -226,8 +240,8 @@ else:
             f"""
             <div style="text-align: center; padding: 10px 0;">
                 <img src="{LOGO_URL}" width="140"><br><br>
-                <div style="background-color: #f3f4f6; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
-                    <span style="font-size: 0.85rem; color: #6b7280;">Bienvenido(a)</span><br>
+                <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                    <span style="font-size: 0.80rem; color: #6b7280;">Bienvenido(a)</span><br>
                     <strong style="color: #111827; font-size: 1rem;">👤 {st.session_state['nombre']}</strong>
                 </div>
             </div>
@@ -256,7 +270,7 @@ else:
         f"""
         <div class="header-box" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <h2 style="margin:0; color:white; font-size: 1.5rem;">FEDESO</h2>
+                <h2 style="margin:0; color:white; font-size: 1.5rem; font-weight:700;">FEDESO</h2>
                 <span style="font-size: 0.9rem; opacity: 0.9;">Fondo Empresarial de Solidaridad</span>
             </div>
             <div style="text-align: right;">
@@ -283,7 +297,6 @@ else:
                 porcentaje_progreso = 0.0
                 amort_user = pd.DataFrame()
                 
-                # Estado por defecto
                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_amort.columns:
@@ -326,9 +339,7 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # =========================================================
-                    # ESTABLECER ESTADO DE FORMA DINÁMICA
-                    # =========================================================
+                    # Evaluación dinámica del estado del crédito
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
@@ -367,11 +378,11 @@ else:
 
                         st.markdown(f"""
                         <div class="card">
-                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 15px;">
-                                <h4 style="margin:0; color:#1e3a8a;">📊 RESUMEN DE PRÉSTAMO</h4>
+                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px;">
+                                <h4 style="margin:0; color:#1e3a8a; font-weight:700;">📊 RESUMEN DE PRÉSTAMO</h4>
                                 <span style="font-size: 0.85rem; color:#6b7280;">Asociado: <strong>{st.session_state['nombre']}</strong></span>
                             </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
                                 <div class="metric-container">
                                     <span class="metric-label">Monto del Préstamo</span>
                                     <span class="metric-value">${monto:,.0f}</span>
@@ -389,7 +400,7 @@ else:
                                     <span class="metric-value" style="color:#1e3a8a;">${cuota:,.0f}</span>
                                 </div>
                                 <div class="metric-container">
-                                    <span class="metric-label">Tasa Anual Nominal (T.A.N.)</span>
+                                    <span class="metric-label">Tasa Anual Nominal</span>
                                     <span class="metric-value">{tasa_anual_fmt}</span>
                                 </div>
                                 <div class="metric-container">
@@ -404,10 +415,10 @@ else:
                 pct_val = porcentaje_progreso * 100
                 st.markdown(f"""
                 <div class="card">
-                    <h4 style="margin-top:0; color:#1e3a8a; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 15px;">
+                    <h4 style="margin-top:0; color:#1e3a8a; font-weight:700; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px;">
                         📊 ESTADO DE PAGOS Y PROGRESO
                     </h4>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px;">
                         <div class="metric-container">
                             <span class="metric-label">Progreso de Pago</span>
                             <span class="metric-value">{num_pagadas} <span style="font-size:0.9rem; font-weight:normal; color:#6b7280;">de {total_cuotas} cuotas</span></span>
@@ -421,8 +432,8 @@ else:
                             <span class="metric-value">${saldo_pendiente_est:,.0f}</span>
                         </div>
                     </div>
-                    <div style="margin-top: 10px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #6b7280; font-weight: 600; margin-bottom: 5px;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #6b7280; font-weight: 600; margin-bottom: 6px;">
                             <span>Progreso Actual de Amortización</span>
                             <span>{pct_val:.1f}% Pagado</span>
                         </div>
@@ -475,6 +486,9 @@ else:
         except Exception as e:
             st.error(f"Error al procesar la información: {e}")
 
+    # =========================================================
+    # SIMULADOR DE CRÉDITO (AMORTIZACIÓN EXACTA)
+    # =========================================================
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
         tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
@@ -495,12 +509,14 @@ else:
                 "Plazo deseado (Meses)", min_value=1, max_value=120, value=24, step=1
             )
 
+        # Cálculo exacto de amortización bajo sistema francés
         i = TASA_MENSUAL_DEFAULT
-        n = plazo_sim
-        P = monto_sim
+        n = int(plazo_sim)
+        P = float(monto_sim)
 
         if i > 0:
-            cuota_exacta = P * (i * (1 + i)**n) / ((1 + i)**n - 1)
+            factor = (1 + i)**n
+            cuota_exacta = P * (i * factor) / (factor - 1)
         else:
             cuota_exacta = P / n
 
@@ -512,8 +528,8 @@ else:
 
         st.markdown(f"""
         <div class="card" style="background-color: #f8fafc; border-left: 4px solid #2563eb;">
-            <h4 style="margin-top:0; color:#1e3a8a; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">📊 RESULTADO DE LA SIMULACIÓN</h4>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;">
+            <h4 style="margin-top:0; color:#1e3a8a; font-weight:700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">📊 RESULTADO DE LA SIMULACIÓN</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 12px;">
                 <div class="metric-container">
                     <span class="metric-label">Cuota Mensual Estimada</span>
                     <span class="metric-value" style="color:#2563eb; font-size: 1.4rem;">${cuota_sim:,.0f}</span>
@@ -523,7 +539,7 @@ else:
                     <span class="metric-value" style="font-size: 1.1rem;">{fecha_fin_str}</span>
                 </div>
                 <div class="metric-container">
-                    <span class="metric-label">Total a Pagar</span>
+                    <span class="metric-label">Total a Pagar Estimado</span>
                     <span class="metric-value">${cuota_sim * n:,.0f}</span>
                 </div>
             </div>
@@ -531,13 +547,18 @@ else:
         """, unsafe_allow_html=True)
 
         st.markdown('<h4 style="color:#1e3a8a; margin-top:20px; margin-bottom:10px;">📅 PROYECCIÓN PASO A PASO</h4>', unsafe_allow_html=True)
-        saldo = float(P)
+        
+        # Generación paso a paso de la tabla de amortización con cuadre exacto de última cuota
+        saldo = P
         cronograma = []
+
         for cuota_n in range(1, n + 1):
             fecha_cuota = fecha_inicio + relativedelta(months=cuota_n)
             mes_txt = f"{meses_esp[fecha_cuota.month - 1][:3]}-{str(fecha_cuota.year)[2:]}"
             interes_cuota = round(saldo * i)
+
             if cuota_n == n:
+                # Cierre exacto para garantización de Saldo $0
                 capital_cuota = round(saldo)
                 cuota_aplicada = capital_cuota + interes_cuota
                 saldo = 0.0
