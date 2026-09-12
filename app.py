@@ -513,8 +513,8 @@ else:
         i = tasa_aplicada
 
         # Fuerza el cálculo directo
-tasa_aplicada = 0.006986518
-cuota_sim = calcular_cuota_pago(tasa_aplicada, int(plazo_sim), float(monto_sim))
+
+cuota_sim = calcular_cuota_pago(i, n, P)
 
         fecha_inicio = dt.now()
         fecha_fin = fecha_inicio + relativedelta(months=n)
