@@ -12,7 +12,7 @@ from dateutil.relativedelta import relativedelta
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
-TASA_MENSUAL_DEFAULT = 0.0069865  # Tasa base (0.69865% M.V.)
+TASA_MENSUAL_DEFAULT = 0.0069865  # Tasa base equivalente al 0.70% visual de la hoja
 
 MESES_MAP = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
@@ -21,14 +21,14 @@ MESES_MAP = {
     "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
 }
 
-def calcular_cuota_exacta(monto: float, plazo: int, tasa_mensual: float) -> int:
-    """Fórmula estandarizada equivalente a =REDONDEAR(PAGO(tasa; plazo; -monto); 0) de Google Sheets."""
-    if tasa_mensual <= 0 or plazo <= 0:
+def calcular_cuota_pago(tasa_mv: float, plazo: int, monto: float) -> int:
+    """Replica de forma matemática exacta la fórmula =ABS(PAGO(tasa_mv, plazo, monto)) de Google Sheets."""
+    if tasa_mv <= 0 or plazo <= 0:
         return round(monto / max(1, plazo))
     
-    factor = (1 + tasa_mensual) ** plazo
-    cuota = monto * (tasa_mensual * factor) / (factor - 1)
-    return round(cuota)
+    factor = (1 + tasa_mv) ** plazo
+    cuota = monto * (tasa_mv * factor) / (factor - 1)
+    return round(abs(cuota))
 
 def parsear_fecha_flexible(texto):
     """Convierte libremente strings como 'oct-26', '10/2026', 'octubre 2026' a fecha de inicio de mes."""
@@ -358,7 +358,7 @@ else:
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
-                # --- TARJETA 1: RESUMEN DEL PRÉSTAMO (LEE DE GOOGLE SHEETS) ---
+                # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
                 if "usuario" in df_resumen.columns:
                     df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"])
                     resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
@@ -484,7 +484,7 @@ else:
             st.error(f"Error al procesar la información: {e}")
 
     # =========================================================
-    # SIMULADOR DE CRÉDITO (CÁLCULO CON FÓRMULA ESTANDARIZADA)
+    # SIMULADOR DE CRÉDITO
     # =========================================================
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
@@ -512,8 +512,8 @@ else:
         P = float(monto_sim)
         i = tasa_aplicada
 
-        # Cálculo de cuota estandarizado
-        cuota_sim = calcular_cuota_exacta(P, n, i)
+        # Cálculo de cuota usando la orden exact: =ABS(PAGO(tasa_mv, plazo, monto))
+        cuota_sim = calcular_cuota_pago(i, n, P)
 
         fecha_inicio = dt.now()
         fecha_fin = fecha_inicio + relativedelta(months=n)
