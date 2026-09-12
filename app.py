@@ -490,7 +490,7 @@ else:
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
         
         tasa_aplicada = TASA_MENSUAL_DEFAULT
-        tasa_display = f"{tasa_aplicada * 100:.2f}% M.V."
+        tasa_display = f"{0.006986518 * 100:.2f}% M.V."
 
         st.markdown(f"""
         <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe;">
