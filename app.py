@@ -96,9 +96,13 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
 @st.cache_data(ttl=10, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
-    df = pd.read_csv(url, dtype=str)
-    df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
-    return df
+    try:
+        df = pd.read_csv(url, dtype=str)
+        df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
+        return df
+    except Exception as e:
+        st.error(f"No se pudo cargar la pestaña '{nombre_pestana}': {e}")
+        return pd.DataFrame()
 
 def get_image_base64(file_path):
     if os.path.exists(file_path):
@@ -149,8 +153,8 @@ if not st.session_state["autenticado"]:
                     with st.spinner("Verificando credenciales..."):
                         try:
                             df_users = cargar_pestana("Usuarios")
-                            if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
-                                st.error("❌ Estructura de la tabla 'Usuarios' no válida.")
+                            if df_users.empty or "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
+                                st.error("❌ Estructura de la tabla 'Usuarios' no válida o sin acceso.")
                             else:
                                 df_users["usuario"] = normalizar_texto(df_users["usuario"], minusculas=True)
                                 df_users["contrasena"] = normalizar_texto(df_users["contrasena"], minusculas=False)
@@ -164,7 +168,6 @@ if not st.session_state["autenticado"]:
                                     st.session_state["nombre"] = (
                                         valido["nombre"].iloc[0] if "nombre" in valido.columns else user_input
                                     )
-                                    # Cargar rol de Administrador si existe
                                     st.session_state["rol"] = (
                                         valido["rol"].iloc[0].lower().strip() if "rol" in valido.columns else "asociado"
                                     )
@@ -216,12 +219,73 @@ else:
             st.session_state["pantalla"] = "dashboard"
             st.rerun()
 
-    # --- PANTALLA 1: DASHBOARD ---
+    # =========================================================
+    # PANTALLA 1: DASHBOARD (ESTADO DE CUENTA)
+    # =========================================================
     if st.session_state["pantalla"] == "dashboard":
-        st.markdown('<h3 style="color:#1e3a8a;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
-        st.info("Pestaña de Estado de Cuenta lista para consultar.")
+        st.markdown('<h3 style="color:#1e3a8a;">📊 Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
+        usuario_actual = st.session_state["usuario"]
 
-    # --- PANTALLA 2: SIMULADOR DE CRÉDITO ---
+        # Cargar Pestaña Resumen
+        df_resumen = cargar_pestana("Resumen")
+        
+        if not df_resumen.empty and "usuario" in df_resumen.columns:
+            df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"], minusculas=True)
+            res_user = df_resumen[df_resumen["usuario"] == usuario_actual]
+
+            if not res_user.empty:
+                fila_p = res_user.iloc[0]
+                
+                # Extraer campos
+                monto_val = limpiar_numero(fila_p.get("monto", 0))
+                plazo_val = int(limpiar_numero(fila_p.get("plazo", 0)))
+                tasa_val = limpiar_numero(fila_p.get("tasa_mv", TASA_MENSUAL_EXACTA))
+                cuota_val = limpiar_numero(fila_p.get("cuota", 0))
+
+                if cuota_val == 0:
+                    cuota_val = calcular_cuota_pago(tasa_val, plazo_val, monto_val)
+
+                # Mostrar Tarjetas / Métricas Principales
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Monto Aprobado", f"${monto_val:,.0f}")
+                col2.metric("Plazo", f"{plazo_val} Meses")
+                col3.metric("Cuota Mensual", f"${cuota_val:,.0f}")
+                col4.metric("Tasa de Interés M.V.", f"{tasa_val * 100:.2f}%")
+
+                st.divider()
+
+                # Cargar Tabla de Amortización / Pagos
+                st.subheader("📋 Plan de Pagos y Amortización")
+                df_amort = cargar_pestana("Amortizacion")
+
+                if not df_amort.empty and "usuario" in df_amort.columns:
+                    df_amort["usuario"] = normalizar_texto(df_amort["usuario"], minusculas=True)
+                    amort_user = df_amort[df_amort["usuario"] == usuario_actual].copy()
+
+                    if not amort_user.empty:
+                        # Limpiar y dar formato a las columnas numéricas
+                        for col in ["intereses", "capital", "saldo"]:
+                            if col in amort_user.columns:
+                                amort_user[col] = amort_user[col].apply(lambda x: f"${limpiar_numero(x):,.0f}")
+
+                        # Seleccionar columnas a mostrar
+                        cols_mostrar = [c for c in ["cuota", "mes", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
+                        if cols_mostrar:
+                            st.dataframe(amort_user[cols_mostrar], use_container_width=True, hide_index=True)
+                        else:
+                            st.dataframe(amort_user, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No se registraron cuotas detalladas para este crédito.")
+                else:
+                    st.info("No se encontró información en la tabla de Amortización.")
+            else:
+                st.warning("⚠️ No se encontró un préstamo registrado para tu usuario actualmente.")
+        else:
+            st.error("Error al cargar la información del resumen de crédito desde Google Sheets.")
+
+    # =========================================================
+    # PANTALLA 2: SIMULADOR DE CRÉDITO
+    # =========================================================
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
         monto_sim = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000)
@@ -229,7 +293,9 @@ else:
         cuota_sim = calcular_cuota_pago(TASA_MENSUAL_EXACTA, int(plazo_sim), float(monto_sim))
         st.success(f"Cuota mensual estimada: **${cuota_sim:,.0f}**")
 
-    # --- PANTALLA 3: PANEL DE ADMINISTRACIÓN (SOLO ADMIN) ---
+    # =========================================================
+    # PANTALLA 3: PANEL DE ADMINISTRACIÓN (SOLO ADMIN)
+    # =========================================================
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
         st.markdown('<h3 style="color:#1e3a8a;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
 
