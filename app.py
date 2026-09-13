@@ -65,7 +65,7 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
         return False
 
 # =========================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES DE CÁLCULO Y FORMATO
 # =========================================================
 def calcular_cuota_pago(tasa_mv: float, plazo: int, monto: float) -> int:
     if tasa_mv <= 0 or plazo <= 0:
@@ -101,7 +101,6 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
         df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
         return df
     except Exception as e:
-        st.error(f"No se pudo cargar la pestaña '{nombre_pestana}': {e}")
         return pd.DataFrame()
 
 def get_image_base64(file_path):
@@ -113,6 +112,9 @@ def get_image_base64(file_path):
 
 LOGO_URL = get_image_base64("fedeso imagen web.png")
 
+# =========================================================
+# CONFIGURACIÓN DE PÁGINA
+# =========================================================
 st.set_page_config(
     page_title="FEDESO - Mi Estado de Cuenta",
     page_icon="💰",
@@ -120,7 +122,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicializar Estados
+# Estilos CSS Generales
+st.markdown("""
+<style>
+    .stMetric {
+        background-color: #f8fafc;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Inicializar Estados en Session State
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario"] = ""
@@ -178,7 +192,7 @@ if not st.session_state["autenticado"]:
                             st.error(f"Error al conectar con la base de datos: {e}")
 
 # =========================================================
-# APLICACIÓN PRINCIPAL
+# APLICACIÓN PRINCIPAL (SESIÓN INICIADA)
 # =========================================================
 else:
     with st.sidebar:
@@ -189,7 +203,7 @@ else:
                 <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
                     <span style="font-size: 0.80rem; color: #6b7280;">Bienvenido(a)</span><br>
                     <strong style="color: #111827; font-size: 1rem;">👤 {st.session_state['nombre']}</strong><br>
-                    <small style="color: #2563eb;">Rol: {st.session_state['rol'].capitalize()}</small>
+                    <small style="color: #2563eb; font-weight: 600;">Rol: {st.session_state['rol'].capitalize()}</small>
                 </div>
             </div>
             """,
@@ -203,7 +217,7 @@ else:
             st.session_state["pantalla"] = "simulador"
             st.rerun()
         
-        # Opción exclusiva para rol ADMIN
+        # Opción habilitada únicamente para ROL ADMIN
         if st.session_state["rol"] == "admin":
             st.divider()
             if st.button("🛠️ Panel de Administración", use_container_width=True):
@@ -220,13 +234,13 @@ else:
             st.rerun()
 
     # =========================================================
-    # PANTALLA 1: DASHBOARD (ESTADO DE CUENTA)
+    # PANTALLA 1: DASHBOARD (ESTADO DE CUENTA COMPLETO)
     # =========================================================
     if st.session_state["pantalla"] == "dashboard":
-        st.markdown('<h3 style="color:#1e3a8a;">📊 Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#1e3a8a; font-weight:700;">📊 Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
         usuario_actual = st.session_state["usuario"]
 
-        # Cargar Pestaña Resumen
+        # 1. Cargar Datos de Resumen
         df_resumen = cargar_pestana("Resumen")
         
         if not df_resumen.empty and "usuario" in df_resumen.columns:
@@ -236,7 +250,6 @@ else:
             if not res_user.empty:
                 fila_p = res_user.iloc[0]
                 
-                # Extraer campos
                 monto_val = limpiar_numero(fila_p.get("monto", 0))
                 plazo_val = int(limpiar_numero(fila_p.get("plazo", 0)))
                 tasa_val = limpiar_numero(fila_p.get("tasa_mv", TASA_MENSUAL_EXACTA))
@@ -247,15 +260,20 @@ else:
 
                 # Mostrar Tarjetas / Métricas Principales
                 col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Monto Aprobado", f"${monto_val:,.0f}")
-                col2.metric("Plazo", f"{plazo_val} Meses")
-                col3.metric("Cuota Mensual", f"${cuota_val:,.0f}")
-                col4.metric("Tasa de Interés M.V.", f"{tasa_val * 100:.2f}%")
+                with col1:
+                    st.metric("Monto Aprobado", f"${monto_val:,.0f}")
+                with col2:
+                    st.metric("Plazo Total", f"{plazo_val} Meses")
+                with col3:
+                    st.metric("Cuota Mensual", f"${cuota_val:,.0f}")
+                with col4:
+                    tasa_mostrar = tasa_val * 100 if tasa_val < 1 else tasa_val
+                    st.metric("Tasa de Interés M.V.", f"{tasa_mostrar:.2f}%")
 
-                st.divider()
+                st.markdown("<br>", unsafe_allow_html=True)
 
-                # Cargar Tabla de Amortización / Pagos
-                st.subheader("📋 Plan de Pagos y Amortización")
+                # 2. Cargar Plan de Pagos / Amortización
+                st.markdown('<h4 style="color:#1e3a8a;">📋 Plan de Pagos y Amortización</h4>', unsafe_allow_html=True)
                 df_amort = cargar_pestana("Amortizacion")
 
                 if not df_amort.empty and "usuario" in df_amort.columns:
@@ -263,41 +281,59 @@ else:
                     amort_user = df_amort[df_amort["usuario"] == usuario_actual].copy()
 
                     if not amort_user.empty:
-                        # Limpiar y dar formato a las columnas numéricas
-                        for col in ["intereses", "capital", "saldo"]:
-                            if col in amort_user.columns:
-                                amort_user[col] = amort_user[col].apply(lambda x: f"${limpiar_numero(x):,.0f}")
+                        # Crear versión limpia para mostrar en la tabla
+                        tabla_mostrar = pd.DataFrame()
+                        
+                        if "cuota" in amort_user.columns:
+                            tabla_mostrar["Cuota #"] = amort_user["cuota"]
+                        if "mes" in amort_user.columns:
+                            tabla_mostrar["Mes / Año"] = amort_user["mes"]
+                        if "estado" in amort_user.columns:
+                            tabla_mostrar["Estado"] = amort_user["estado"]
+                        if "intereses" in amort_user.columns:
+                            tabla_mostrar["Intereses"] = amort_user["intereses"].apply(lambda x: f"${limpiar_numero(x):,.0f}")
+                        if "capital" in amort_user.columns:
+                            tabla_mostrar["Capital"] = amort_user["capital"].apply(lambda x: f"${limpiar_numero(x):,.0f}")
+                        if "saldo" in amort_user.columns:
+                            tabla_mostrar["Saldo Restante"] = amort_user["saldo"].apply(lambda x: f"${limpiar_numero(x):,.0f}")
 
-                        # Seleccionar columnas a mostrar
-                        cols_mostrar = [c for c in ["cuota", "mes", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
-                        if cols_mostrar:
-                            st.dataframe(amort_user[cols_mostrar], use_container_width=True, hide_index=True)
-                        else:
-                            st.dataframe(amort_user, use_container_width=True, hide_index=True)
+                        if tabla_mostrar.empty:
+                            tabla_mostrar = amort_user.drop(columns=["usuario"], errors="ignore")
+
+                        st.dataframe(tabla_mostrar, use_container_width=True, hide_index=True)
                     else:
-                        st.info("No se registraron cuotas detalladas para este crédito.")
+                        st.info("No hay registros de cuotas detalladas para este usuario aún.")
                 else:
                     st.info("No se encontró información en la tabla de Amortización.")
             else:
-                st.warning("⚠️ No se encontró un préstamo registrado para tu usuario actualmente.")
+                st.warning("⚠️ No se encontró un préstamo activo registrado para tu usuario.")
         else:
-            st.error("Error al cargar la información del resumen de crédito desde Google Sheets.")
+            st.error("No se pudo cargar la información general de créditos desde Google Sheets.")
 
     # =========================================================
     # PANTALLA 2: SIMULADOR DE CRÉDITO
     # =========================================================
     elif st.session_state["pantalla"] == "simulador":
-        st.markdown('<h3 style="color:#1e3a8a;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
-        monto_sim = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000)
-        plazo_sim = st.number_input("Plazo en Meses", value=24, step=1)
+        st.markdown('<h3 style="color:#1e3a8a; font-weight:700;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
+        st.write("Calcula la cuota aproximada para un nuevo crédito con la tasa preferencial.")
+        
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            monto_sim = st.number_input("Monto Solicitado ($)", value=5000000, step=500000, min_value=100000)
+        with col_s2:
+            plazo_sim = st.number_input("Plazo Deseado (Meses)", value=24, step=1, min_value=1)
+
         cuota_sim = calcular_cuota_pago(TASA_MENSUAL_EXACTA, int(plazo_sim), float(monto_sim))
-        st.success(f"Cuota mensual estimada: **${cuota_sim:,.0f}**")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.success(f"💡 Para un crédito de **${monto_sim:,.0f}** a **{int(plazo_sim)} meses**, la cuota mensual estimada es: **${cuota_sim:,.0f}**")
 
     # =========================================================
     # PANTALLA 3: PANEL DE ADMINISTRACIÓN (SOLO ADMIN)
     # =========================================================
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
-        st.markdown('<h3 style="color:#1e3a8a;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#1e3a8a; font-weight:700;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
+        st.write("Gestiona la base de datos de usuarios, préstamos y pagos en Google Sheets.")
 
         tab_user, tab_prestamo, tab_cuota = st.tabs(["👤 Crear Usuario", "💵 Registrar Préstamo", "📅 Registrar Pago / Cuota"])
 
@@ -313,13 +349,13 @@ else:
                     new_pass = st.text_input("Contraseña").strip()
                     new_rol = st.selectbox("Rol", ["asociado", "admin"])
                 
-                btn_crear_u = st.form_submit_button("Guardar Usuario en Google Sheets")
+                btn_crear_u = st.form_submit_button("Guardar Usuario en Google Sheets", use_container_width=True)
 
                 if btn_crear_u:
                     if new_user and new_pass and new_nombre:
                         fila = [new_user, new_pass, new_nombre, new_rol]
                         if agregar_fila_sheet("Usuarios", fila):
-                            st.success(f"✅ Usuario **{new_user}** registrado con éxito en Google Sheets.")
+                            st.success(f"✅ Usuario **{new_user}** registrado con éxito.")
                     else:
                         st.warning("Por favor complete todos los campos.")
 
@@ -328,13 +364,16 @@ else:
             st.subheader("Asignar Préstamo a Asociado")
             with st.form("form_crear_prestamo"):
                 user_p = st.text_input("Usuario del Asociado").strip().lower()
-                monto_p = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000)
-                plazo_p = st.number_input("Plazo en Meses", value=24, step=1)
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    monto_p = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000)
+                with col_p2:
+                    plazo_p = st.number_input("Plazo en Meses", value=24, step=1)
                 
                 cuota_calc = calcular_cuota_pago(TASA_MENSUAL_EXACTA, int(plazo_p), float(monto_p))
-                st.info(f"Cuota mensual calculada: **${cuota_calc:,.0f}**")
+                st.info(f"Cuota mensual calculada automáticamente: **${cuota_calc:,.0f}**")
 
-                btn_crear_p = st.form_submit_button("Guardar Préstamo en Google Sheets")
+                btn_crear_p = st.form_submit_button("Guardar Préstamo en Google Sheets", use_container_width=True)
 
                 if btn_crear_p:
                     if user_p:
@@ -344,7 +383,7 @@ else:
                     else:
                         st.warning("Ingrese el usuario del asociado.")
 
-        # TAB 3: REGISTRAR CUOTAS
+        # TAB 3: REGISTRAR CUOTAS EN AMORTIZACIÓN
         with tab_cuota:
             st.subheader("Registrar Cuota o Estado de Pago")
             with st.form("form_crear_cuota"):
@@ -360,7 +399,7 @@ else:
                     capital_c = st.number_input("Capital ($)", value=0)
                     saldo_c = st.number_input("Saldo Restante ($)", value=0)
 
-                btn_crear_c = st.form_submit_button("Guardar Cuota en Google Sheets")
+                btn_crear_c = st.form_submit_button("Guardar Cuota en Google Sheets", use_container_width=True)
 
                 if btn_crear_c:
                     if user_c:
