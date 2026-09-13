@@ -1,3 +1,6 @@
 streamlit
 pandas
 requests
+python-dateutil
+gspread
+google-auth
