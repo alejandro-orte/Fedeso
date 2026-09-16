@@ -24,7 +24,7 @@ MESES_MAP = {
 }
 
 # =========================================================
-# CONEXIÓN A GOOGLE SHEETS PARA ESCRITURA (gspread)
+# CONEXIÓN A GOOGLE SHEETS PARA LECTURA Y ESCRITURA (gspread)
 # =========================================================
 def obtener_cliente_gspread():
     """Conecta con la API de Google Sheets mediante Secrets de Streamlit o archivo local."""
@@ -80,6 +80,34 @@ def agregar_filas_sheet(nombre_pestana: str, filas: list):
         st.error("No se configuraron las credenciales de escritura en Google Sheets.")
         return False
 
+@st.cache_data(ttl=2, show_spinner=False)
+def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
+    """Carga datos en tiempo real mediante API gspread con fallback a CSV."""
+    gc = obtener_cliente_gspread()
+    if gc:
+        try:
+            sh = gc.open_by_key(SHEET_ID)
+            worksheet = sh.worksheet(nombre_pestana)
+            data = worksheet.get_all_values()
+            if data:
+                headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+                df = pd.DataFrame(data[1:], columns=headers)
+                return df
+        except Exception:
+            pass
+    
+    # Fallback si falla gspread
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
+        df = pd.read_csv(url, dtype=str)
+        df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+def cargar_usuarios() -> pd.DataFrame:
+    return cargar_pestana("Usuarios")
+
 # =========================================================
 # FUNCIONES AUXILIARES DE DATOS
 # =========================================================
@@ -94,7 +122,6 @@ def parsear_fecha_flexible(texto):
     
     parts = [p for p in val.split('-') if p]
     
-    # Intento 1: Reconocimiento por nombre de mes
     if len(parts) >= 2:
         mes_cand = parts[0]
         anio_cand = parts[-1]
@@ -107,7 +134,6 @@ def parsear_fecha_flexible(texto):
             y = int(anio_cand) if len(anio_cand) == 4 else 2000 + int(anio_cand)
             return datetime.date(y, m, 1)
 
-    # Intento 2: Parseo estándar numérico de fecha
     res = pd.to_datetime(val, errors="coerce", dayfirst=True)
     if pd.notna(res):
         return datetime.date(res.year, res.month, 1)
@@ -135,7 +161,6 @@ st.set_page_config(
 # =========================================================
 st.markdown("""
 <style>
-    /* Estructura general de tarjetas */
     .card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -144,8 +169,6 @@ st.markdown("""
         margin-bottom: 22px;
         border: 1px solid #e5e7eb;
     }
-    
-    /* Indicadores numéricos */
     .metric-container {
         display: flex;
         flex-direction: column;
@@ -163,8 +186,6 @@ st.markdown("""
         font-weight: 700;
         color: #111827;
     }
-
-    /* Badges de Estado */
     .status-tag-green {
         display: inline-block;
         background-color: #dcfce7;
@@ -192,8 +213,6 @@ st.markdown("""
         font-size: 0.85rem;
         font-weight: 700;
     }
-
-    /* Header principal */
     .header-box {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
         color: white;
@@ -226,20 +245,6 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
         .str.strip()
     )
     return res.str.lower() if minusculas else res
-
-@st.cache_data(ttl=60, show_spinner=False)
-def cargar_usuarios() -> pd.DataFrame:
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Usuarios"
-    df = pd.read_csv(url, dtype=str)
-    df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
-    return df
-
-@st.cache_data(ttl=300, show_spinner=False)
-def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
-    df = pd.read_csv(url, dtype=str)
-    df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
-    return df
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -389,13 +394,11 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
-                    # Excluir la cuota 0
                     amort_cuotas = amort_user[
                         ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
                     ].copy()
                     total_cuotas = len(amort_cuotas)
 
-                    # Filtrar pagadas
                     estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
                     cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
                     num_pagadas = len(cuotas_pagadas_df)
@@ -414,7 +417,6 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # Evaluación dinámica del estado del crédito
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
@@ -436,7 +438,6 @@ else:
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
-                # --- TARJETA 1: RESUMEN DEL PRÉSTAMO ---
                 if "usuario" in df_resumen.columns:
                     df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"])
                     resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
@@ -486,7 +487,6 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
 
-                # --- TARJETA 2: ESTADO DE PAGOS Y PROGRESO ---
                 pct_val = porcentaje_progreso * 100
                 st.markdown(f"""
                 <div class="card">
@@ -519,7 +519,6 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # --- TARJETA 3: TABLA PLAN DE PAGOS ---
                 if not amort_user.empty:
                     st.markdown('<h4 style="color:#1e3a8a; margin-top:25px; margin-bottom:10px;">📅 PLAN DE PAGOS (AMORTIZACIONES)</h4>', unsafe_allow_html=True)
                     cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"] if c in amort_user.columns]
@@ -584,7 +583,6 @@ else:
                 "Plazo deseado (Meses)", min_value=1, max_value=120, value=24, step=1
             )
 
-        # Cálculo exacto de amortización bajo sistema francés
         i = TASA_MENSUAL_DEFAULT
         n = int(plazo_sim)
         P = float(monto_sim)
@@ -623,7 +621,6 @@ else:
 
         st.markdown('<h4 style="color:#1e3a8a; margin-top:20px; margin-bottom:10px;">📅 PROYECCIÓN PASO A PASO</h4>', unsafe_allow_html=True)
         
-        # Generación paso a paso de la tabla de amortización
         saldo = P
         cronograma = []
 
@@ -724,19 +721,14 @@ else:
                 if btn_crear_p:
                     if user_p and mes_inicio_p:
                         with st.spinner("Guardando préstamo y generando plan de pagos completo..."):
-                            # 1. Guardar resumen del préstamo
                             fila_resumen = [user_p, str(monto_p), str(plazo_p), f"{TASA_MENSUAL_DEFAULT:.7f}", str(cuota_calc)]
                             exito_resumen = agregar_fila_sheet("Resumen", fila_resumen)
 
-                            # 2. Generar todas las filas de la tabla de amortización
                             filas_amortizacion = []
-                            
-                            # Cuota 0 (Desembolso inicial)
                             filas_amortizacion.append([
                                 user_p, "0", "", "$0", "$0", f"${P_p:,.0f}", "Pendiente"
                             ])
 
-                            # Calcular fechas para cada cuota
                             fecha_base = parsear_fecha_flexible(mes_inicio_p) or dt.now().date()
                             meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
@@ -754,7 +746,6 @@ else:
                                     capital_c = cuota_calc - interes_c
                                     saldo_acc -= capital_c
 
-                                # Estructura A-G: [usuario, cuota_num, mes_año, intereses, capital, saldo, estado]
                                 filas_amortizacion.append([
                                     user_p,
                                     str(idx_c),
@@ -765,7 +756,6 @@ else:
                                     "Pendiente"
                                 ])
 
-                            # 3. Insertar las cuotas en la pestaña Amortización
                             exito_amort = agregar_filas_sheet("Amortizacion", filas_amortizacion)
 
                             if exito_resumen and exito_amort:
