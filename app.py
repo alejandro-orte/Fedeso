@@ -111,7 +111,7 @@ def cargar_usuarios() -> pd.DataFrame:
 # FUNCIONES AUXILIARES DE DATOS
 # =========================================================
 def parsear_fecha_flexible(texto):
-    """Convierte libremente strings como 'sep-26', 'sep-01', '10/2026' a fecha de inicio de mes."""
+    """Convierte libremente strings a fecha de inicio de mes."""
     if pd.isna(texto) or not str(texto).strip():
         return None
     
@@ -390,7 +390,6 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
-                    # Excluir cuota 0 para contabilidad de cuotas
                     amort_cuotas = amort_user[
                         ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
                     ].copy()
@@ -409,7 +408,6 @@ else:
                     else:
                         estado_proxima_str = "🎉 Completado"
 
-                    # CORRECCIÓN DE SALDO PENDIENTES
                     if not cuotas_pagadas_df.empty:
                         saldo_pendiente_est = cuotas_pagadas_df.iloc[-1].get("saldo", 0.0)
                     else:
@@ -422,7 +420,6 @@ else:
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
-                    # CORRECCIÓN DE EVALUACIÓN DE MORA
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
@@ -703,9 +700,7 @@ else:
                 with col_p2:
                     plazo_p = st.number_input("Plazo en Meses", value=24, step=1)
                 with col_p3:
-                    meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
-                    mes_default_str = f"{meses_cortos[dt.now().month - 1]}-{str(dt.now().year)[2:]}"
-                    mes_inicio_p = st.text_input("Mes de Primera Cuota (Ej: sep-26)", value=mes_default_str).strip()
+                    fecha_inicio_p = st.date_input("Fecha de Primera Cuota", value=dt.now().date())
 
                 i_p = TASA_MENSUAL_DEFAULT
                 n_p = int(plazo_p)
@@ -722,7 +717,7 @@ else:
                 btn_crear_p = st.form_submit_button("Guardar Préstamo y Generar Amortización", use_container_width=True)
 
                 if btn_crear_p:
-                    if user_p and mes_inicio_p:
+                    if user_p:
                         with st.spinner("Guardando préstamo y generando plan de pagos completo..."):
                             fila_resumen = [user_p, str(monto_p), str(plazo_p), f"{TASA_MENSUAL_DEFAULT:.7f}", str(cuota_calc)]
                             exito_resumen = agregar_fila_sheet("Resumen", fila_resumen)
@@ -732,7 +727,8 @@ else:
                                 user_p, "0", "", "$0", "$0", f"${P_p:,.0f}", "Pendiente"
                             ])
 
-                            fecha_base = parsear_fecha_flexible(mes_inicio_p) or dt.now().date()
+                            fecha_base = datetime.date(fecha_inicio_p.year, fecha_inicio_p.month, 1)
+                            meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
                             saldo_acc = P_p
                             for idx_c in range(1, n_p + 1):
@@ -763,7 +759,7 @@ else:
                             if exito_resumen and exito_amort:
                                 st.success(f"🎉 ¡Préstamo registrado exitosamente! Se han guardado las {len(filas_amortizacion)} cuotas de **{user_p}** en Google Sheets.")
                     else:
-                        st.warning("Por favor ingrese el usuario y el mes de inicio.")
+                        st.warning("Por favor ingrese el usuario del asociado.")
 
         # TAB 3: REGISTRAR CUOTAS INDIVIDUALES EN AMORTIZACIÓN
         with tab_cuota:
