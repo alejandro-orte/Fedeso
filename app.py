@@ -54,7 +54,7 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
             sh = gc.open_by_key(SHEET_ID)
             worksheet = sh.worksheet(nombre_pestana)
             worksheet.append_row(fila)
-            st.cache_data.clear()  # Refresca el caché para actualizar la pantalla
+            st.cache_data.clear()
             return True
         except Exception as e:
             st.error(f"Error al escribir en Google Sheets: {e}")
@@ -71,7 +71,7 @@ def agregar_filas_sheet(nombre_pestana: str, filas: list):
             sh = gc.open_by_key(SHEET_ID)
             worksheet = sh.worksheet(nombre_pestana)
             worksheet.append_rows(filas)
-            st.cache_data.clear()  # Refresca caché
+            st.cache_data.clear()
             return True
         except Exception as e:
             st.error(f"Error al realizar la inserción masiva en Google Sheets: {e}")
@@ -96,7 +96,6 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
         except Exception:
             pass
     
-    # Fallback si falla gspread
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
         df = pd.read_csv(url, dtype=str)
@@ -112,12 +111,12 @@ def cargar_usuarios() -> pd.DataFrame:
 # FUNCIONES AUXILIARES DE DATOS
 # =========================================================
 def parsear_fecha_flexible(texto):
-    """Convierte libremente strings como 'oct-26', '10/2026', 'octubre 2026', '2026-10-15' a fecha de inicio de mes."""
+    """Convierte libremente strings como 'sep-26', 'sep-01', '10/2026' a fecha de inicio de mes."""
     if pd.isna(texto) or not str(texto).strip():
         return None
     
     val = str(texto).strip().lower()
-    for sep in ['/', '.', ' ']:
+    for sep in ['/', '.', ' ', '_']:
         val = val.replace(sep, '-')
     
     parts = [p for p in val.split('-') if p]
@@ -127,11 +126,11 @@ def parsear_fecha_flexible(texto):
         anio_cand = parts[-1]
         if mes_cand in MESES_MAP and anio_cand.isdigit():
             m = MESES_MAP[mes_cand]
-            y = int(anio_cand) if len(anio_cand) == 4 else 2000 + int(anio_cand)
-            return datetime.date(y, m, 1)
-        elif len(parts) >= 3 and parts[1] in MESES_MAP and anio_cand.isdigit():
-            m = MESES_MAP[parts[1]]
-            y = int(anio_cand) if len(anio_cand) == 4 else 2000 + int(anio_cand)
+            y_int = int(anio_cand)
+            if y_int < 100:
+                y = dt.now().year if y_int < 24 else 2000 + y_int
+            else:
+                y = y_int
             return datetime.date(y, m, 1)
 
     res = pd.to_datetime(val, errors="coerce", dayfirst=True)
@@ -224,9 +223,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# FUNCIONES AUXILIARES DE DATOS
-# =========================================================
 def limpiar_numero(valor):
     if pd.isna(valor) or valor is None:
         return 0.0
@@ -394,6 +390,7 @@ else:
                     else:
                         amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
 
+                    # Excluir cuota 0 para contabilidad de cuotas
                     amort_cuotas = amort_user[
                         ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
                     ].copy()
@@ -409,14 +406,23 @@ else:
                         mes_proximo = proxima_cuota.iloc[0].get("mes_año", "N/A")
                         num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
                         estado_proxima_str = f"Cuota #{num_cuota_actual} ({mes_proximo})"
-                        saldo_pendiente_est = proxima_cuota.iloc[0].get("saldo", 0.0)
                     else:
                         estado_proxima_str = "🎉 Completado"
-                        saldo_pendiente_est = 0.0
+
+                    # CORRECCIÓN DE SALDO PENDIENTES
+                    if not cuotas_pagadas_df.empty:
+                        saldo_pendiente_est = cuotas_pagadas_df.iloc[-1].get("saldo", 0.0)
+                    else:
+                        cuota_0 = amort_user[amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])]
+                        if not cuota_0.empty:
+                            saldo_pendiente_est = cuota_0.iloc[0].get("saldo", 0.0)
+                        elif "usuario" in df_resumen.columns and not df_resumen[df_resumen["usuario"] == usuario_key].empty:
+                            saldo_pendiente_est = limpiar_numero(df_resumen[df_resumen["usuario"] == usuario_key]["monto"].iloc[0])
 
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
 
+                    # CORRECCIÓN DE EVALUACIÓN DE MORA
                     hoy = datetime.date.today()
                     mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
 
@@ -428,13 +434,8 @@ else:
                         texto_fecha_prox = str(proxima_cuota.iloc[0].get("mes_año", "")).strip()
                         fecha_prox_dt = parsear_fecha_flexible(texto_fecha_prox)
 
-                        if fecha_prox_dt:
-                            if fecha_prox_dt < mes_actual_inicio:
-                                badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-                            elif fecha_prox_dt == mes_actual_inicio:
-                                badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
-                            else:
-                                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
+                        if fecha_prox_dt and fecha_prox_dt < mes_actual_inicio:
+                            badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
@@ -702,7 +703,9 @@ else:
                 with col_p2:
                     plazo_p = st.number_input("Plazo en Meses", value=24, step=1)
                 with col_p3:
-                    mes_inicio_p = st.text_input("Mes de Primera Cuota (Ej: ene-26)", value="ene-26").strip()
+                    meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+                    mes_default_str = f"{meses_cortos[dt.now().month - 1]}-{str(dt.now().year)[2:]}"
+                    mes_inicio_p = st.text_input("Mes de Primera Cuota (Ej: sep-26)", value=mes_default_str).strip()
 
                 i_p = TASA_MENSUAL_DEFAULT
                 n_p = int(plazo_p)
@@ -730,7 +733,6 @@ else:
                             ])
 
                             fecha_base = parsear_fecha_flexible(mes_inicio_p) or dt.now().date()
-                            meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
                             saldo_acc = P_p
                             for idx_c in range(1, n_p + 1):
@@ -772,7 +774,7 @@ else:
                     user_c = st.text_input("Usuario").strip().lower()
                     num_cuota = st.number_input("Número de Cuota", min_value=1, value=1)
                 with col_c2:
-                    mes_c = st.text_input("Mes/Año (Ej: oct-26)", value="oct-26").strip()
+                    mes_c = st.text_input("Mes/Año (Ej: sep-26)", value="sep-26").strip()
                     estado_c = st.selectbox("Estado", ["Pagado", "Pendiente", "En Mora"])
                 with col_c3:
                     interes_c = st.number_input("Intereses ($)", value=0)
