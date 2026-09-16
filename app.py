@@ -63,6 +63,23 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
         st.error("No se configuraron las credenciales de escritura en Google Sheets.")
         return False
 
+def agregar_filas_sheet(nombre_pestana: str, filas: list):
+    """Agrega múltiples filas (inserción masiva) al final de la pestaña en Google Sheets."""
+    gc = obtener_cliente_gspread()
+    if gc:
+        try:
+            sh = gc.open_by_key(SHEET_ID)
+            worksheet = sh.worksheet(nombre_pestana)
+            worksheet.append_rows(filas)
+            st.cache_data.clear()  # Refresca caché
+            return True
+        except Exception as e:
+            st.error(f"Error al realizar la inserción masiva en Google Sheets: {e}")
+            return False
+    else:
+        st.error("No se configuraron las credenciales de escritura en Google Sheets.")
+        return False
+
 # =========================================================
 # FUNCIONES AUXILIARES DE DATOS
 # =========================================================
@@ -505,15 +522,15 @@ else:
                 # --- TARJETA 3: TABLA PLAN DE PAGOS ---
                 if not amort_user.empty:
                     st.markdown('<h4 style="color:#1e3a8a; margin-top:25px; margin-bottom:10px;">📅 PLAN DE PAGOS (AMORTIZACIONES)</h4>', unsafe_allow_html=True)
-                    cols_existentes = [c for c in ["cuota_num", "mes_año", "estado", "intereses", "capital", "saldo"] if c in amort_user.columns]
+                    cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"] if c in amort_user.columns]
                     tabla_mostrar = amort_user[cols_existentes].copy()
                     renombrar = {
                         "cuota_num": "Nº",
                         "mes_año": "Mes/Año",
-                        "estado": "Estado de Pago",
                         "intereses": "Intereses",
                         "capital": "Capital",
-                        "saldo": "Saldo"
+                        "saldo": "Saldo",
+                        "estado": "Estado de Pago"
                     }
                     tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
 
@@ -677,41 +694,88 @@ else:
                     else:
                         st.warning("Por favor complete todos los campos.")
 
-        # TAB 2: REGISTRAR PRÉSTAMO EN RESUMEN
+        # TAB 2: REGISTRAR PRÉSTAMO Y GENERAR PLAN COMPLETO EN AMORTIZACIÓN
         with tab_prestamo:
             st.subheader("Asignar Préstamo a Asociado")
             with st.form("form_crear_prestamo"):
                 user_p = st.text_input("Usuario del Asociado").strip().lower()
-                col_p1, col_p2 = st.columns(2)
+                col_p1, col_p2, col_p3 = st.columns(3)
                 with col_p1:
                     monto_p = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000)
                 with col_p2:
                     plazo_p = st.number_input("Plazo en Meses", value=24, step=1)
-                
+                with col_p3:
+                    mes_inicio_p = st.text_input("Mes de Primera Cuota (Ej: ene-26)", value="ene-26").strip()
+
                 i_p = TASA_MENSUAL_DEFAULT
                 n_p = int(plazo_p)
                 P_p = float(monto_p)
+                
                 if i_p > 0 and n_p > 0:
                     factor_p = (1 + i_p)**n_p
                     cuota_calc = round(P_p * (i_p * factor_p) / (factor_p - 1))
                 else:
                     cuota_calc = round(P_p / max(1, n_p))
 
-                st.info(f"Cuota mensual calculada automáticamente: **${cuota_calc:,.0f}**")
+                st.info(f"Cuota mensual calculada: **${cuota_calc:,.0f}** | Se generarán **{n_p + 1} filas** (Cuota 0 de desembolso + {n_p} cuotas).")
 
-                btn_crear_p = st.form_submit_button("Guardar Préstamo en Google Sheets", use_container_width=True)
+                btn_crear_p = st.form_submit_button("Guardar Préstamo y Generar Amortización", use_container_width=True)
 
                 if btn_crear_p:
-                    if user_p:
-                        fila = [user_p, str(monto_p), str(plazo_p), f"{TASA_MENSUAL_DEFAULT:.7f}", str(cuota_calc)]
-                        if agregar_fila_sheet("Resumen", fila):
-                            st.success(f"✅ Préstamo registrado para el usuario **{user_p}**.")
-                    else:
-                        st.warning("Ingrese el usuario del asociado.")
+                    if user_p and mes_inicio_p:
+                        with st.spinner("Guardando préstamo y generando plan de pagos completo..."):
+                            # 1. Guardar resumen del préstamo
+                            fila_resumen = [user_p, str(monto_p), str(plazo_p), f"{TASA_MENSUAL_DEFAULT:.7f}", str(cuota_calc)]
+                            exito_resumen = agregar_fila_sheet("Resumen", fila_resumen)
 
-        # TAB 3: REGISTRAR CUOTAS EN AMORTIZACIÓN
+                            # 2. Generar todas las filas de la tabla de amortización
+                            filas_amortizacion = []
+                            
+                            # Cuota 0 (Desembolso inicial)
+                            filas_amortizacion.append([
+                                user_p, "0", "", "$0", "$0", f"${P_p:,.0f}", "Pendiente"
+                            ])
+
+                            # Calcular fechas para cada cuota
+                            fecha_base = parsear_fecha_flexible(mes_inicio_p) or dt.now().date()
+                            meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+                            saldo_acc = P_p
+                            for idx_c in range(1, n_p + 1):
+                                f_cuota = fecha_base + relativedelta(months=idx_c - 1)
+                                mes_txt_c = f"{meses_cortos[f_cuota.month - 1]}-{str(f_cuota.year)[2:]}"
+                                
+                                interes_c = round(saldo_acc * i_p)
+                                
+                                if idx_c == n_p:
+                                    capital_c = round(saldo_acc)
+                                    saldo_acc = 0.0
+                                else:
+                                    capital_c = cuota_calc - interes_c
+                                    saldo_acc -= capital_c
+
+                                # Estructura A-G: [usuario, cuota_num, mes_año, intereses, capital, saldo, estado]
+                                filas_amortizacion.append([
+                                    user_p,
+                                    str(idx_c),
+                                    mes_txt_c,
+                                    f"${interes_c:,.0f}",
+                                    f"${capital_c:,.0f}",
+                                    f"${max(0.0, saldo_acc):,.0f}",
+                                    "Pendiente"
+                                ])
+
+                            # 3. Insertar las cuotas en la pestaña Amortización
+                            exito_amort = agregar_filas_sheet("Amortizacion", filas_amortizacion)
+
+                            if exito_resumen and exito_amort:
+                                st.success(f"🎉 ¡Préstamo registrado exitosamente! Se han guardado las {len(filas_amortizacion)} cuotas de **{user_p}** en Google Sheets.")
+                    else:
+                        st.warning("Por favor ingrese el usuario y el mes de inicio.")
+
+        # TAB 3: REGISTRAR CUOTAS INDIVIDUALES EN AMORTIZACIÓN
         with tab_cuota:
-            st.subheader("Registrar Cuota o Estado de Pago")
+            st.subheader("Registrar / Modificar Cuota Individual")
             with st.form("form_crear_cuota"):
                 col_c1, col_c2, col_c3 = st.columns(3)
                 with col_c1:
@@ -729,7 +793,7 @@ else:
 
                 if btn_crear_c:
                     if user_c:
-                        fila = [user_c, str(num_cuota), mes_c, estado_c, str(interes_c), str(capital_c), str(saldo_c)]
+                        fila = [user_c, str(num_cuota), mes_c, f"${interes_c:,.0f}", f"${capital_c:,.0f}", f"${saldo_c:,.0f}", estado_c]
                         if agregar_fila_sheet("Amortizacion", fila):
                             st.success(f"✅ Cuota #{num_cuota} guardada para **{user_c}**.")
                     else:
