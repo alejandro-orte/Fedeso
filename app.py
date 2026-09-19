@@ -33,12 +33,13 @@ MESES_MAP = {
     "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
 }
 
+HEADERS_COMPROBANTES = ["usuario", "nombre", "mes_cuota", "fecha_subida", "nombre_archivo", "tipo_archivo", "archivo_b64", "observaciones", "estado"]
+
 # =========================================================
 # ESTILOS CSS
 # =========================================================
 st.markdown("""
 <style>
-    /* 1. OCULTAR BARRA SUPERIOR COMPLETA */
     header[data-testid="stHeader"], 
     [data-testid="stHeaderToolbar"],
     [data-testid="stToolbar"],
@@ -55,19 +56,16 @@ st.markdown("""
         visibility: hidden !important;
     }
 
-    /* 2. OCULTAR BARRA FLOTANTE SOBRE TABLAS */
     [data-testid="stElementToolbar"] {
         display: none !important;
     }
 
-    /* 3. BARRA LATERAL ANCHA */
     [data-testid="stSidebar"] {
         width: 340px !important;
         background-color: #f8fafc !important;
         border-right: 3px solid #cbd5e1 !important;
     }
     
-    /* 4. BOTONES DE MENÚ */
     [data-testid="stSidebar"] .stButton > button {
         width: 100% !important;
         height: 56px !important;
@@ -89,7 +87,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
 
-    /* BOTÓN DE CERRAR SESIÓN */
     [data-testid="stSidebar"] .stButton > button[kind="primary"] {
         border-color: #dc2626 !important;
         background-color: #fef2f2 !important;
@@ -100,7 +97,6 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* TARJETAS Y CONTENEDORES */
     .card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -196,7 +192,7 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
             except Exception:
                 worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
                 if nombre_pestana == "Comprobantes":
-                    worksheet.append_row(["usuario", "nombre", "mes_cuota", "fecha_subida", "nombre_archivo", "tipo_archivo", "archivo_b64", "observaciones", "estado"])
+                    worksheet.append_row(HEADERS_COMPROBANTES)
             
             worksheet.append_row(fila)
             st.cache_data.clear()
@@ -469,11 +465,22 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     if gc:
         try:
             sh = gc.open_by_key(SHEET_ID)
-            worksheet = sh.worksheet(nombre_pestana)
+            try:
+                worksheet = sh.worksheet(nombre_pestana)
+            except Exception:
+                if nombre_pestana == "Comprobantes":
+                    worksheet = sh.add_worksheet(title="Comprobantes", rows=1000, cols=10)
+                    worksheet.append_row(HEADERS_COMPROBANTES)
+                    return pd.DataFrame(columns=HEADERS_COMPROBANTES)
+                return pd.DataFrame()
+
             data = worksheet.get_all_values()
-            if data:
+            if data and len(data) > 0:
                 headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
-                df = pd.DataFrame(data[1:], columns=headers)
+                if len(data) > 1:
+                    df = pd.DataFrame(data[1:], columns=headers)
+                else:
+                    df = pd.DataFrame(columns=headers)
                 return df
         except Exception:
             pass
@@ -951,10 +958,12 @@ else:
                         "Pendiente"
                     ]
                     
+                    st.cache_data.clear()
                     if agregar_fila_sheet("Comprobantes", fila_comp):
+                        st.cache_data.clear()
                         st.success("✅ ¡Notificación de pago enviada exitosamente! El administrador la verificará y actualizará el estado de la cuota.")
                     else:
-                        st.error("No se pudo enviar la notificación. Intente de nuevo.")
+                        st.error("No se pudo enviar la notificación. Verifique la conexión con Google Sheets.")
 
     # ---------------------------------------------------------
     # 3. PANTALLA: SIMULADOR DE CRÉDITO
@@ -1237,6 +1246,13 @@ else:
         # TAB 4: VERIFICAR NOTIFICACIONES DE PAGO
         with tab_verif:
             st.subheader("📩 Notificaciones de Pago Pendientes por Verificar")
+            
+            col_ref, _ = st.columns([1, 2])
+            with col_ref:
+                if st.button("🔄 Actualizar / Recargar Notificaciones", key="btn_refresh_comp", use_container_width=True):
+                    st.cache_data.clear()
+                    st.rerun()
+
             df_comp = cargar_pestana("Comprobantes")
             
             if df_comp.empty or "estado" not in df_comp.columns:
@@ -1293,6 +1309,7 @@ else:
                                     ok_amort = actualizar_estado_amortizacion(u_id, cuota_sel, "Pagado")
                                     ok_comp = actualizar_estado_comprobante(u_id, cuota_sel, "Aprobado")
                                     if ok_amort or ok_comp:
+                                        st.cache_data.clear()
                                         st.success(f"✅ El pago de **{u_nom}** ha sido verificado e ingresado correctamente.")
                                         st.rerun()
                                     else:
