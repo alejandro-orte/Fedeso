@@ -13,7 +13,7 @@ from google.oauth2.service_account import Credentials
 # CONFIGURACIÓN DE PÁGINA
 # =========================================================
 st.set_page_config(
-    page_title="FEDESO - Mi Estado de Cuenta",
+    page_title="FEDESO - Fondo Empresarial de Solidaridad",
     page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -535,7 +535,6 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
 
             first_row = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
 
-            # Autorreparación: Si Fila 1 carece de encabezados clave, inserta encabezados esperados
             if expected and "usuario" in expected and "usuario" not in first_row:
                 try:
                     worksheet.insert_row(expected, index=1)
@@ -763,7 +762,7 @@ else:
     # ---------------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
-        usuario_key = st.session_state["usuario"]
+        usuario_key = normalizar_texto(pd.Series([st.session_state["usuario"]])).iloc[0]
 
         col_btn_dash, _ = st.columns([1.5, 1])
         with col_btn_dash:
@@ -788,8 +787,8 @@ else:
                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_amort.columns:
-                    df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
-                    amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
+                    df_amort["usuario_clean"] = normalizar_texto(df_amort["usuario"])
+                    amort_user = df_amort[df_amort["usuario_clean"] == usuario_key].copy()
 
                 if not amort_user.empty:
                     columnas_num = ["intereses", "capital", "saldo"]
@@ -826,8 +825,11 @@ else:
                         cuota_0 = amort_user[amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])]
                         if not cuota_0.empty:
                             saldo_pendiente_est = cuota_0.iloc[0].get("saldo", 0.0)
-                        elif "usuario" in df_resumen.columns and not df_resumen[df_resumen["usuario"] == usuario_key].empty:
-                            saldo_pendiente_est = limpiar_numero(df_resumen[df_resumen["usuario"] == usuario_key]["monto"].iloc[0])
+                        elif "usuario" in df_resumen.columns:
+                            df_resumen["usuario_clean"] = normalizar_texto(df_resumen["usuario"])
+                            r_match = df_resumen[df_resumen["usuario_clean"] == usuario_key]
+                            if not r_match.empty:
+                                saldo_pendiente_est = limpiar_numero(r_match["monto"].iloc[0])
 
                     if total_cuotas > 0:
                         porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
@@ -854,8 +856,8 @@ else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
                 if "usuario" in df_resumen.columns:
-                    df_resumen["usuario"] = normalizar_texto(df_resumen["usuario"])
-                    resumen_user = df_resumen[df_resumen["usuario"] == usuario_key]
+                    df_resumen["usuario_clean"] = normalizar_texto(df_resumen["usuario"])
+                    resumen_user = df_resumen[df_resumen["usuario_clean"] == usuario_key]
 
                     if not resumen_user.empty:
                         monto = limpiar_numero(resumen_user["monto"].iloc[0])
@@ -980,14 +982,14 @@ else:
     # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "subir_comprobante":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📩 Notificar Pago Realizado</h3>', unsafe_allow_html=True)
-        usuario_key = st.session_state["usuario"]
+        usuario_key = normalizar_texto(pd.Series([st.session_state["usuario"]])).iloc[0]
         
         df_amort = cargar_pestana("Amortizacion")
         opciones_cuotas = []
         
         if "usuario" in df_amort.columns:
-            df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
-            amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
+            df_amort["usuario_clean"] = normalizar_texto(df_amort["usuario"])
+            amort_user = df_amort[df_amort["usuario_clean"] == usuario_key].copy()
             if not amort_user.empty:
                 amort_cuotas = amort_user[~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])].copy()
                 for _, row in amort_cuotas.iterrows():
@@ -1143,11 +1145,12 @@ else:
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
         
-        tab_user, tab_prestamo, tab_cuota, tab_verif = st.tabs([
+        tab_user, tab_prestamo, tab_cuota, tab_verif, tab_resumen_fondo = st.tabs([
             "👤 Crear Usuario", 
             "💵 Registrar Préstamo", 
             "📅 Registrar Pago / Cuota",
-            "📩 Verificar Notificaciones de Pago"
+            "📩 Verificar Notificaciones",
+            "📈 Resumen Financiero del Fondo"
         ])
 
         # TAB 1: CREAR USUARIOS
@@ -1259,7 +1262,8 @@ else:
                 user_c = st.selectbox("Seleccione el Asociado:", usuarios_lista if usuarios_lista else ["Sin usuarios creados"])
 
             if user_c and user_c != "Sin usuarios creados":
-                df_amort_u = df_amort[df_amort["usuario"].astype(str).str.strip().str.lower() == user_c].copy()
+                df_amort["usuario_clean"] = normalizar_texto(df_amort["usuario"])
+                df_amort_u = df_amort[df_amort["usuario_clean"] == user_c].copy()
                 
                 if not df_amort_u.empty:
                     df_amort_u["cuota_num_int"] = df_amort_u["cuota_num"].apply(lambda x: int(limpiar_numero(x)))
@@ -1367,3 +1371,43 @@ else:
                                     else:
                                         st.error("Error al actualizar la base de datos.")
                         st.divider()
+
+        # TAB 5: RESUMEN FINANCIERO DEL FONDO (EXCEL)
+        with tab_resumen_fondo:
+            st.subheader("📈 Resumen General y Balance del Fondo FEDESO")
+            st.markdown("""
+            <div class="card" style="background-color: #f8fafc; border-left: 5px solid #1e3a8a;">
+                <p style="color: #1e3a8a; font-size: 1.05rem; font-weight: 700; margin:0;">
+                    📊 Indicadores financieros globales consolidados del fondo de ahorro y aportes:
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                st.metric("Total Aportes Asociados", "$52,480,000", "Histórico acumulado")
+                st.metric("Intereses de Cuenta", "$3,295,502", "Rendimientos bancarios")
+            with col_f2:
+                st.metric("Intereses de Préstamos", "$3,521,869", "Generados por cartera")
+                st.metric("Intereses de CDT", "$2,591,054", "Inversiones CDT")
+            with col_f3:
+                st.metric("Total Ingresos Generados", "$61,973,725", "Acumulado total")
+                st.metric("Saldo Disponible Neto", "$61,543,511", "Después de costos")
+
+            st.write("")
+            st.markdown("#### 📋 Detalle de Cartera y Costos")
+            
+            df_resumen_tabla = pd.DataFrame([
+                {"Concepto / Indicador Financiero": "Total Aportes Asociados", "Valor Acumulado": "$52,480,000[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Intereses de Cuenta Bancaria", "Valor Acumulado": "$3,295,502[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Intereses por Préstamos", "Valor Acumulado": "$3,521,869.56[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Intereses Generados por CDT", "Valor Acumulado": "$2,591,054[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Ingresos por Desayunos / Otros", "Valor Acumulado": "$85,300[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Total Ingresos Brutos", "Valor Acumulado": "$61,973,725.56[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Retenciones y Costos (4x1000)", "Valor Acumulado": "-$430,214[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Saldo Neto Después de Costos", "Valor Acumulado": "$61,543,511.56[cite: 8]"},
+                {"Concepto / Indicador Financiero": "Capital Prestado a Cartera", "Valor Acumulado": "-$99,628,000"},
+                {"Concepto / Indicador Financiero": "Capital de Préstamos Pagado", "Valor Acumulado": "$65,824,131.27"}
+            ])
+
+            st.dataframe(df_resumen_tabla, use_container_width=True, hide_index=True)
