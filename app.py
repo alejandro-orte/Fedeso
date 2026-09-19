@@ -9,7 +9,17 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # =========================================================
-# CONFIGURACIÓN Y RECURSOS
+# CONFIGURACIÓN DE PÁGINA (DEBE SER EL PRIMER COMANDO ST)
+# =========================================================
+st.set_page_config(
+    page_title="FEDESO - Mi Estado de Cuenta",
+    page_icon="💰",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# =========================================================
+# CONFIGURACIÓN Y CONSTANTES
 # =========================================================
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
@@ -24,7 +34,138 @@ MESES_MAP = {
 }
 
 # =========================================================
-# CONEXIÓN A GOOGLE SHEETS PARA LECTURA Y ESCRITURA (gspread)
+# ESTILOS CSS - ACCESIBILIDAD Y OCULTAMIENTO DE MENÚS/OPCIONES
+# =========================================================
+st.markdown("""
+<style>
+    /* 1. OCULTAR BARRA SUPERIOR COMPLETA (Share, GitHub, editar, opciones) */
+    header[data-testid="stHeader"], 
+    [data-testid="stHeaderToolbar"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    #MainMenu {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    footer {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* 2. OCULTAR BARRA FLOTANTE SOBRE LAS TABLAS (descarga, búsqueda, pantalla completa) */
+    [data-testid="stElementToolbar"] {
+        display: none !important;
+    }
+
+    /* 3. BARRA LATERAL ANCHA Y DESTACADA PARA PERSONAS MAYORES */
+    [data-testid="stSidebar"] {
+        width: 340px !important;
+        background-color: #f8fafc !important;
+        border-right: 3px solid #cbd5e1 !important;
+    }
+    
+    /* 4. BOTONES DE MENÚ GRANDES, CLAROS E INTUITIVOS */
+    [data-testid="stSidebar"] .stButton > button {
+        width: 100% !important;
+        height: 56px !important;
+        font-size: 1.10rem !important;
+        font-weight: 700 !important;
+        border-radius: 12px !important;
+        margin-bottom: 8px !important;
+        border: 2px solid #2563eb !important;
+        background-color: #ffffff !important;
+        color: #1e3a8a !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border-color: #1d4ed8 !important;
+        transform: translateY(-2px);
+    }
+
+    /* BOTÓN ESPECIAL DE CERRAR SESIÓN */
+    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+        border-color: #dc2626 !important;
+        background-color: #fef2f2 !important;
+        color: #991b1b !important;
+    }
+    [data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+        background-color: #dc2626 !important;
+        color: #ffffff !important;
+    }
+
+    /* TARJETAS Y CONTENEDORES PRINCIPALES */
+    .card {
+        background-color: #ffffff;
+        border-radius: 12px;
+        padding: 22px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        margin-bottom: 22px;
+        border: 1px solid #e5e7eb;
+    }
+    .metric-container {
+        display: flex;
+        flex-direction: column;
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: #6b7280;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+    }
+    .metric-value {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #111827;
+    }
+    .status-tag-green {
+        display: inline-block;
+        background-color: #dcfce7;
+        color: #15803d;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.90rem;
+        font-weight: 800;
+    }
+    .status-tag-yellow {
+        display: inline-block;
+        background-color: #fef3c7;
+        color: #b45309;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.90rem;
+        font-weight: 800;
+    }
+    .status-tag-red {
+        display: inline-block;
+        background-color: #fee2e2;
+        color: #b91c1c;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.90rem;
+        font-weight: 800;
+    }
+    .header-box {
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+        color: white;
+        padding: 20px 24px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 10px rgba(30, 58, 138, 0.15);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# CONEXIÓN A GOOGLE SHEETS PARA LECTURA Y ESCRITURA
 # =========================================================
 def obtener_cliente_gspread():
     """Conecta con la API de Google Sheets mediante Secrets de Streamlit o archivo local."""
@@ -64,7 +205,7 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
         return False
 
 def agregar_filas_sheet(nombre_pestana: str, filas: list):
-    """Agrega múltiples filas (inserción masiva) al final de la pestaña en Google Sheets."""
+    """Agrega múltiples filas al final de la pestaña en Google Sheets."""
     gc = obtener_cliente_gspread()
     if gc:
         try:
@@ -148,122 +289,6 @@ def get_image_base64(file_path):
 
 LOGO_URL = get_image_base64("fedeso imagen web.png")
 
-st.set_page_config(
-    page_title="FEDESO - Mi Estado de Cuenta",
-    page_icon="💰",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# =========================================================
-# ESTILOS CSS - ACCESIBILIDAD Y BARRA LATERAL DESTACADA
-# =========================================================
-st.markdown("""
-<style>
-    /* Ampliar y destacar la Barra Lateral */
-    [data-testid="stSidebar"] {
-        width: 340px !important;
-        background-color: #f8fafc !important;
-        border-right: 3px solid #cbd5e1 !important;
-    }
-    
-    /* Botones de Menú Grandes e Intuitivos */
-    [data-testid="stSidebar"] .stButton > button {
-        width: 100% !important;
-        height: 56px !important;
-        font-size: 1.10rem !important;
-        font-weight: 700 !important;
-        border-radius: 12px !important;
-        margin-bottom: 8px !important;
-        border: 2px solid #2563eb !important;
-        background-color: #ffffff !important;
-        color: #1e3a8a !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    [data-testid="stSidebar"] .stButton > button:hover {
-        background-color: #2563eb !important;
-        color: #ffffff !important;
-        border-color: #1d4ed8 !important;
-        transform: translateY(-2px);
-    }
-
-    /* Botón especial para Cerrar Sesión */
-    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
-        border-color: #dc2626 !important;
-        background-color: #fef2f2 !important;
-        color: #991b1b !important;
-    }
-    [data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
-        background-color: #dc2626 !important;
-        color: #ffffff !important;
-    }
-
-    /* Tarjetas principales */
-    .card {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 22px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        margin-bottom: 22px;
-        border: 1px solid #e5e7eb;
-    }
-    .metric-container {
-        display: flex;
-        flex-direction: column;
-    }
-    .metric-label {
-        font-size: 0.85rem;
-        color: #6b7280;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 4px;
-    }
-    .metric-value {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: #111827;
-    }
-    .status-tag-green {
-        display: inline-block;
-        background-color: #dcfce7;
-        color: #15803d;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 0.90rem;
-        font-weight: 800;
-    }
-    .status-tag-yellow {
-        display: inline-block;
-        background-color: #fef3c7;
-        color: #b45309;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 0.90rem;
-        font-weight: 800;
-    }
-    .status-tag-red {
-        display: inline-block;
-        background-color: #fee2e2;
-        color: #b91c1c;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 0.90rem;
-        font-weight: 800;
-    }
-    .header-box {
-        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-        color: white;
-        padding: 20px 24px;
-        border-radius: 12px;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 10px rgba(30, 58, 138, 0.15);
-    }
-</style>
-""", unsafe_allow_html=True)
-
 def limpiar_numero(valor):
     if pd.isna(valor) or valor is None:
         return 0.0
@@ -283,6 +308,9 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
     )
     return res.str.lower() if minusculas else res
 
+# =========================================================
+# CONTROL DE SESIÓN
+# =========================================================
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario"] = ""
@@ -363,7 +391,6 @@ else:
             unsafe_allow_html=True
         )
 
-        # Destacar botón activo para orientar al usuario
         txt_dash = "▶️ 📊 Mi Estado de Cuenta" if st.session_state["pantalla"] == "dashboard" else "📊 Mi Estado de Cuenta"
         txt_sim = "▶️ 🧮 Simulador de Crédito" if st.session_state["pantalla"] == "simulador" else "🧮 Simulador de Crédito"
         txt_adm = "▶️ 🛠️ Panel de Administración" if st.session_state["pantalla"] == "admin" else "🛠️ Panel de Administración"
@@ -383,9 +410,7 @@ else:
                 st.rerun()
 
         st.divider()
-        st.link_button(
-            "📝 Solicitud de Crédito", FORM_URL, use_container_width=True
-        )
+        st.link_button("📝 Solicitud de Crédito", FORM_URL, use_container_width=True)
         st.write("")
         if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
             st.session_state["autenticado"] = False
@@ -489,7 +514,7 @@ else:
                                 badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
                             elif fecha_prox_dt == mes_actual_inicio:
                                 badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
-                            else:  # fecha_prox_dt > mes_actual_inicio
+                            else:
                                 badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
@@ -617,7 +642,7 @@ else:
             st.error(f"Error al procesar la información: {e}")
 
     # =========================================================
-    # SIMULADOR DE CRÉDITO (AMORTIZACIÓN EXACTA)
+    # SIMULADOR DE CRÉDITO
     # =========================================================
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
@@ -718,7 +743,7 @@ else:
         st.link_button("📝 Solicitar este Crédito", FORM_URL, use_container_width=True)
 
     # =========================================================
-    # PANEL DE ADMINISTRACIÓN (SOLO ROL ADMIN)
+    # PANEL DE ADMINISTRACIÓN
     # =========================================================
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
@@ -747,7 +772,7 @@ else:
                     else:
                         st.warning("Por favor complete todos los campos.")
 
-        # TAB 2: REGISTRAR PRÉSTAMO Y GENERAR PLAN COMPLETO EN AMORTIZACIÓN
+        # TAB 2: REGISTRAR PRÉSTAMO
         with tab_prestamo:
             st.subheader("Asignar Préstamo a Asociado")
             with st.form("form_crear_prestamo"):
@@ -819,7 +844,7 @@ else:
                     else:
                         st.warning("Por favor ingrese el usuario del asociado.")
 
-        # TAB 3: REGISTRAR CUOTAS INDIVIDUALES EN AMORTIZACIÓN
+        # TAB 3: REGISTRAR CUOTAS INDIVIDUALES
         with tab_cuota:
             st.subheader("Registrar / Modificar Cuota Individual")
             with st.form("form_crear_cuota"):
