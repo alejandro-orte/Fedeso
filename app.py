@@ -34,7 +34,18 @@ MESES_MAP = {
     "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
 }
 
+# Encabezados estandarizados para cada pestaña
+HEADERS_USUARIOS = ["usuario", "contrasena", "nombre", "rol"]
+HEADERS_RESUMEN = ["usuario", "monto", "plazo", "tasa_mv", "cuota"]
+HEADERS_AMORTIZACION = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
 HEADERS_COMPROBANTES = ["usuario", "nombre", "mes_cuota", "fecha_subida", "nombre_archivo", "tipo_archivo", "archivo_b64", "observaciones", "estado"]
+
+EXPECTED_HEADERS = {
+    "Usuarios": HEADERS_USUARIOS,
+    "Resumen": HEADERS_RESUMEN,
+    "Amortizacion": HEADERS_AMORTIZACION,
+    "Comprobantes": HEADERS_COMPROBANTES
+}
 
 # =========================================================
 # ESTILOS CSS
@@ -188,16 +199,21 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
     if gc:
         try:
             sh = gc.open_by_key(SHEET_ID)
+            expected = EXPECTED_HEADERS.get(nombre_pestana, [])
             try:
                 worksheet = sh.worksheet(nombre_pestana)
             except Exception:
                 worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
-                if nombre_pestana == "Comprobantes":
-                    worksheet.append_row(HEADERS_COMPROBANTES)
+                if expected:
+                    worksheet.append_row(expected)
             
             vals = worksheet.get_all_values()
-            if not vals and nombre_pestana == "Comprobantes":
-                worksheet.append_row(HEADERS_COMPROBANTES)
+            if not vals and expected:
+                worksheet.append_row(expected)
+            elif vals and expected:
+                primer_fila = [str(cell).replace('\xa0', '').strip().lower() for cell in vals[0]]
+                if "usuario" in expected and "usuario" not in primer_fila:
+                    worksheet.insert_row(expected, index=1)
 
             worksheet.append_row(fila)
             st.cache_data.clear()
@@ -214,7 +230,17 @@ def agregar_filas_sheet(nombre_pestana: str, filas: list):
     if gc:
         try:
             sh = gc.open_by_key(SHEET_ID)
+            expected = EXPECTED_HEADERS.get(nombre_pestana, [])
             worksheet = sh.worksheet(nombre_pestana)
+
+            vals = worksheet.get_all_values()
+            if not vals and expected:
+                worksheet.append_row(expected)
+            elif vals and expected:
+                primer_fila = [str(cell).replace('\xa0', '').strip().lower() for cell in vals[0]]
+                if "usuario" in expected and "usuario" not in primer_fila:
+                    worksheet.insert_row(expected, index=1)
+
             worksheet.append_rows(filas)
             st.cache_data.clear()
             return True
@@ -236,6 +262,11 @@ def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo
                 return False
             
             headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            if "usuario" not in headers:
+                ws.insert_row(HEADERS_AMORTIZACION, index=1)
+                data = ws.get_all_values()
+                headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+
             col_user = headers.index("usuario") if "usuario" in headers else 0
             col_cuota = headers.index("cuota_num") if "cuota_num" in headers else 1
             col_mes = headers.index("mes_año") if "mes_año" in headers else 2
@@ -249,7 +280,6 @@ def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo
                 m = str(row[col_mes]).strip().lower()
                 
                 if u == str(usuario).strip().lower():
-                    # Coincidencia precisa por número de cuota o mes/año
                     coincide_cuota = (len(c) > 0 and (f"cuota #{c} " in target or f"cuota #{c}(" in target or target == c))
                     coincide_mes = (len(m) > 0 and m in target)
                     
@@ -271,7 +301,13 @@ def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: st
             data = ws.get_all_values()
             if not data:
                 return False
+
             headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            if "usuario" not in headers:
+                ws.insert_row(HEADERS_COMPROBANTES, index=1)
+                data = ws.get_all_values()
+                headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+
             col_user = headers.index("usuario") if "usuario" in headers else 0
             col_mes = headers.index("mes_cuota") if "mes_cuota" in headers else 2
             col_estado = headers.index("estado") if "estado" in headers else len(headers) - 1
@@ -302,6 +338,11 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
             return False
 
         headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+        if "usuario" not in headers:
+            ws.insert_row(HEADERS_AMORTIZACION, index=1)
+            data = ws.get_all_values()
+            headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+
         df_all = pd.DataFrame(data[1:], columns=headers)
         df_all["usuario_clean"] = normalizar_texto(df_all["usuario"])
         user_clean = str(usuario).strip().lower()
@@ -471,29 +512,45 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
 @st.cache_data(ttl=1, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     gc = obtener_cliente_gspread()
+    expected = EXPECTED_HEADERS.get(nombre_pestana, [])
+    
     if gc:
         try:
             sh = gc.open_by_key(SHEET_ID)
             try:
                 worksheet = sh.worksheet(nombre_pestana)
             except Exception:
-                if nombre_pestana == "Comprobantes":
-                    worksheet = sh.add_worksheet(title="Comprobantes", rows=1000, cols=10)
-                    worksheet.append_row(HEADERS_COMPROBANTES)
-                    return pd.DataFrame(columns=HEADERS_COMPROBANTES)
+                if expected:
+                    worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
+                    worksheet.append_row(expected)
+                    return pd.DataFrame(columns=expected)
                 return pd.DataFrame()
 
             data = worksheet.get_all_values()
-            if data and len(data) > 0:
-                headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            if not data:
+                if expected:
+                    worksheet.append_row(expected)
+                    return pd.DataFrame(columns=expected)
+                return pd.DataFrame()
+
+            first_row = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+
+            # Autorreparación: Si Fila 1 carece de encabezados clave, inserta encabezados esperados
+            if expected and "usuario" in expected and "usuario" not in first_row:
+                try:
+                    worksheet.insert_row(expected, index=1)
+                except Exception:
+                    pass
+                headers = expected
+                df = pd.DataFrame(data, columns=headers[:len(data[0])])
+            else:
+                headers = first_row
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=headers)
                 else:
                     df = pd.DataFrame(columns=headers)
-                return df
-            elif nombre_pestana == "Comprobantes":
-                worksheet.append_row(HEADERS_COMPROBANTES)
-                return pd.DataFrame(columns=HEADERS_COMPROBANTES)
+
+            return df
         except Exception as e:
             st.error(f"Error cargando pestaña '{nombre_pestana}' vía API: {e}")
 
