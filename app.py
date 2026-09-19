@@ -3,6 +3,7 @@ import pandas as pd
 import base64
 import os
 import datetime
+import time
 from datetime import datetime as dt
 from dateutil.relativedelta import relativedelta
 import gspread
@@ -179,7 +180,7 @@ def obtener_cliente_gspread():
         else:
             return None
     except Exception as e:
-        st.error(f"Error al autenticar Google Sheets API: {e}")
+        st.error(f"Error de autenticación en Google Sheets: {e}")
         return None
 
 def agregar_fila_sheet(nombre_pestana: str, fila: list):
@@ -194,14 +195,19 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
                 if nombre_pestana == "Comprobantes":
                     worksheet.append_row(HEADERS_COMPROBANTES)
             
+            # Verificar si la pestaña no tiene filas o encabezados
+            vals = worksheet.get_all_values()
+            if not vals and nombre_pestana == "Comprobantes":
+                worksheet.append_row(HEADERS_COMPROBANTES)
+
             worksheet.append_row(fila)
             st.cache_data.clear()
             return True
         except Exception as e:
-            st.error(f"Error al escribir en Google Sheets: {e}")
+            st.error(f"Error al guardar en Google Sheets: {e}")
             return False
     else:
-        st.error("No se configuraron las credenciales de escritura en Google Sheets.")
+        st.error("No se encontraron las credenciales de escritura en Google Sheets.")
         return False
 
 def agregar_filas_sheet(nombre_pestana: str, filas: list):
@@ -214,10 +220,10 @@ def agregar_filas_sheet(nombre_pestana: str, filas: list):
             st.cache_data.clear()
             return True
         except Exception as e:
-            st.error(f"Error al realizar la inserción masiva en Google Sheets: {e}")
+            st.error(f"Error en inserción masiva: {e}")
             return False
     else:
-        st.error("No se configuraron las credenciales de escritura en Google Sheets.")
+        st.error("Sin credenciales de escritura.")
         return False
 
 def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo_estado: str = "Pagado"):
@@ -249,7 +255,7 @@ def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo
                         st.cache_data.clear()
                         return True
         except Exception as e:
-            st.error(f"Error al actualizar la tabla Amortización: {e}")
+            st.error(f"Error al actualizar la amortización: {e}")
             return False
     return False
 
@@ -275,7 +281,7 @@ def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: st
                     st.cache_data.clear()
                     return True
         except Exception as e:
-            st.error(f"Error al actualizar la pestaña Comprobantes: {e}")
+            st.error(f"Error al actualizar el comprobante: {e}")
             return False
     return False
 
@@ -459,7 +465,7 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
         st.error(f"Error al recalcular la amortización: {e}")
         return False
 
-@st.cache_data(ttl=2, show_spinner=False)
+@st.cache_data(ttl=1, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     gc = obtener_cliente_gspread()
     if gc:
@@ -482,15 +488,21 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
                 else:
                     df = pd.DataFrame(columns=headers)
                 return df
-        except Exception:
-            pass
-    
+            elif nombre_pestana == "Comprobantes":
+                worksheet.append_row(HEADERS_COMPROBANTES)
+                return pd.DataFrame(columns=HEADERS_COMPROBANTES)
+        except Exception as e:
+            st.error(f"Error cargando pestaña '{nombre_pestana}' vía API: {e}")
+
+    # Fallback usando CSV directo con ignorado estricto de caché de Google (timestamp)
     try:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}"
+        ts = int(time.time())
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&_nocache={ts}"
         df = pd.read_csv(url, dtype=str)
         df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"Error cargando pestaña '{nombre_pestana}' vía CSV: {e}")
         return pd.DataFrame()
 
 def cargar_usuarios() -> pd.DataFrame:
