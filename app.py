@@ -195,7 +195,6 @@ def agregar_fila_sheet(nombre_pestana: str, fila: list):
                 if nombre_pestana == "Comprobantes":
                     worksheet.append_row(HEADERS_COMPROBANTES)
             
-            # Verificar si la pestaña no tiene filas o encabezados
             vals = worksheet.get_all_values()
             if not vals and nombre_pestana == "Comprobantes":
                 worksheet.append_row(HEADERS_COMPROBANTES)
@@ -250,7 +249,11 @@ def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo
                 m = str(row[col_mes]).strip().lower()
                 
                 if u == str(usuario).strip().lower():
-                    if (c in target and len(c) > 0) or (m in target and len(m) > 0) or target in f"cuota #{c} ({m})":
+                    # Coincidencia precisa por número de cuota o mes/año
+                    coincide_cuota = (len(c) > 0 and (f"cuota #{c} " in target or f"cuota #{c}(" in target or target == c))
+                    coincide_mes = (len(m) > 0 and m in target)
+                    
+                    if coincide_cuota or coincide_mes:
                         ws.update_cell(idx, col_estado + 1, nuevo_estado)
                         st.cache_data.clear()
                         return True
@@ -281,7 +284,7 @@ def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: st
                     st.cache_data.clear()
                     return True
         except Exception as e:
-            st.error(f"Error al actualizar el comprobante: {e}")
+            st.error(f"Error al actualizar la notificación: {e}")
             return False
     return False
 
@@ -494,7 +497,6 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
         except Exception as e:
             st.error(f"Error cargando pestaña '{nombre_pestana}' vía API: {e}")
 
-    # Fallback usando CSV directo con ignorado estricto de caché de Google (timestamp)
     try:
         ts = int(time.time())
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&_nocache={ts}"
@@ -943,16 +945,16 @@ else:
         st.markdown("""
         <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
             <p style="color: #166534; font-size: 1.05rem; font-weight: 700; margin:0;">
-                📌 Seleccione la cuota que acaba de pagar y presione el botón de abajo para notificar al administrador. El administrador revisará el pago y actualizará su estado a 'Pagado'.
+                📌 Seleccione la cuota realizada y presione el botón para notificar directamente al administrador con un solo clic.
             </p>
         </div>
         """, unsafe_allow_html=True)
 
         with st.form("form_notificar_pago"):
-            cuota_seleccionada = st.selectbox("1. Seleccione el mes / cuota que va a notificar:", opciones_cuotas)
-            comentarios = st.text_input("2. Observaciones adicionales o número de referencia de transferencia (Opcional):").strip()
+            cuota_seleccionada = st.selectbox("1. Seleccione la cuota que notifica:", opciones_cuotas)
+            comentarios = st.text_input("2. Observaciones adicionales o N° de transferencia (Opcional):").strip()
             
-            submit_comp = st.form_submit_button("📩 Notificar Pago al Administrador", use_container_width=True)
+            submit_comp = st.form_submit_button("📩 Confirmar y Notificar Pago al Administrador", use_container_width=True)
 
             if submit_comp:
                 with st.spinner("Enviando notificación al administrador..."):
@@ -966,14 +968,14 @@ else:
                         "Sin comprobante",
                         "text/plain",
                         "",
-                        comentarios,
+                        comentarios if comentarios else "Notificación rápida",
                         "Pendiente"
                     ]
                     
                     st.cache_data.clear()
                     if agregar_fila_sheet("Comprobantes", fila_comp):
                         st.cache_data.clear()
-                        st.success("✅ ¡Notificación de pago enviada exitosamente! El administrador la verificará y actualizará el estado de la cuota.")
+                        st.success("✅ ¡Notificación de pago enviada correctamente! El administrador la verificará y actualizará la cuota.")
                     else:
                         st.error("No se pudo enviar la notificación. Verifique la conexión con Google Sheets.")
 
@@ -1281,43 +1283,24 @@ else:
                         u_nom = row.get("nombre", u_id)
                         cuota_sel = row.get("mes_cuota", "N/A")
                         fecha_sub = row.get("fecha_subida", "N/A")
-                        fname = row.get("nombre_archivo", "Sin comprobante")
-                        ftype = row.get("tipo_archivo", "text/plain")
-                        b64_data = row.get("archivo_b64", "")
                         obs = row.get("observaciones", "")
                         
-                        st.markdown(f"""
-                        <div class="card" style="border-left: 5px solid #b45309; background-color: #fffbebfb;">
-                            <h4 style="margin:0; color:#1e3a8a;">👤 Asociado: {u_nom} (Cédula: {u_id})</h4>
-                            <p style="margin: 6px 0 2px 0;"><strong>Cuota/Mes notificado:</strong> <span style="color:#2563eb; font-weight:700;">{cuota_sel}</span></p>
-                            <p style="margin: 2px 0;"><strong>Fecha de Notificación:</strong> {fecha_sub}</p>
-                            <p style="margin: 2px 0;"><strong>Notas / Referencia:</strong> {obs if obs else 'Sin notas adicionales'}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        col_card, col_action = st.columns([2.5, 1])
                         
-                        c_file, c_action = st.columns([1, 1])
-                        with c_file:
-                            if b64_data:
-                                try:
-                                    file_bytes = base64.b64decode(b64_data)
-                                    if "image" in ftype.lower() or fname.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                        st.image(file_bytes, caption=fname, width=300)
-                                    st.download_button(
-                                        label=f"📥 Descargar Soporte ({fname})",
-                                        data=file_bytes,
-                                        file_name=fname,
-                                        mime=ftype,
-                                        key=f"dl_{idx}"
-                                    )
-                                except Exception:
-                                    st.info("ℹ️ Pago notificado de forma directa sin archivo adjunto.")
-                            else:
-                                st.info("ℹ️ Pago notificado directamente desde la app (sin adjunto).")
-
-                        with c_action:
+                        with col_card:
+                            st.markdown(f"""
+                            <div class="card" style="border-left: 5px solid #2563eb; background-color: #f8fafc; padding: 16px; margin-bottom: 10px;">
+                                <h4 style="margin:0; color:#1e3a8a;">👤 Asociado: {u_nom} <small>(Cédula: {u_id})</small></h4>
+                                <p style="margin: 6px 0 2px 0;"><strong>Cuota/Mes Notificado:</strong> <span style="color:#2563eb; font-weight:700;">{cuota_sel}</span></p>
+                                <p style="margin: 2px 0;"><strong>Fecha de Notificación:</strong> {fecha_sub}</p>
+                                <p style="margin: 2px 0; color: #4b5563;"><strong>Notas / Referencia:</strong> {obs if obs else 'Sin notas adicionales'}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                        with col_action:
                             st.write("")
-                            if st.button(f"✅ Aprobar Pago y Cambiar Estado a PAGADO", key=f"ok_{idx}", type="primary", use_container_width=True):
-                                with st.spinner("Actualizando Google Sheets..."):
+                            if st.button(f"✅ Aprobar Pago con 1 Clic", key=f"ok_{idx}", type="primary", use_container_width=True):
+                                with st.spinner("Aprobando y actualizando estado a PAGADO..."):
                                     ok_amort = actualizar_estado_amortizacion(u_id, cuota_sel, "Pagado")
                                     ok_comp = actualizar_estado_comprobante(u_id, cuota_sel, "Aprobado")
                                     if ok_amort or ok_comp:
