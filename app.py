@@ -431,8 +431,13 @@ else:
                         texto_fecha_prox = str(proxima_cuota.iloc[0].get("mes_año", "")).strip()
                         fecha_prox_dt = parsear_fecha_flexible(texto_fecha_prox)
 
-                        if fecha_prox_dt and fecha_prox_dt < mes_actual_inicio:
-                            badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                        if fecha_prox_dt:
+                            if fecha_prox_dt < mes_actual_inicio:
+                                badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
+                            elif fecha_prox_dt == mes_actual_inicio:
+                                badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
+                            else:  # fecha_prox_dt > mes_actual_inicio
+                                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
                         else:
                             badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
 
