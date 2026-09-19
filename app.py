@@ -38,7 +38,7 @@ MESES_MAP = {
 # =========================================================
 st.markdown("""
 <style>
-    /* 1. OCULTAR BARRA SUPERIOR COMPLETA (Share, GitHub, editar, opciones) */
+    /* 1. OCULTAR BARRA SUPERIOR COMPLETA */
     header[data-testid="stHeader"], 
     [data-testid="stHeaderToolbar"],
     [data-testid="stToolbar"],
@@ -55,19 +55,19 @@ st.markdown("""
         visibility: hidden !important;
     }
 
-    /* 2. OCULTAR BARRA FLOTANTE SOBRE LAS TABLAS (descarga, búsqueda, pantalla completa) */
+    /* 2. OCULTAR BARRA FLOTANTE SOBRE TABLAS */
     [data-testid="stElementToolbar"] {
         display: none !important;
     }
 
-    /* 3. BARRA LATERAL ANCHA Y DESTACADA PARA PERSONAS MAYORES */
+    /* 3. BARRA LATERAL ANCHA */
     [data-testid="stSidebar"] {
         width: 340px !important;
         background-color: #f8fafc !important;
         border-right: 3px solid #cbd5e1 !important;
     }
     
-    /* 4. BOTONES DE MENÚ GRANDES, CLAROS E INTUITIVOS */
+    /* 4. BOTONES DE MENÚ GRANDES Y CLAROS */
     [data-testid="stSidebar"] .stButton > button {
         width: 100% !important;
         height: 56px !important;
@@ -188,7 +188,7 @@ def obtener_cliente_gspread():
         return None
 
 def agregar_fila_sheet(nombre_pestana: str, fila: list):
-    """Agrega una fila nueva al final de la pestaña especificada en Google Sheets. Si no existe, la crea."""
+    """Agrega una fila nueva al final de la pestaña especificada en Google Sheets."""
     gc = obtener_cliente_gspread()
     if gc:
         try:
@@ -288,6 +288,190 @@ def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: st
             return False
     return False
 
+def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pagado: float, capital_pagado: float, tipo_recalculo: str):
+    """Registra el pago de una cuota/abono extraordinario y recalcula automáticamente las cuotas futuras."""
+    gc = obtener_cliente_gspread()
+    if not gc:
+        st.error("No se pudo conectar a Google Sheets.")
+        return False
+
+    try:
+        sh = gc.open_by_key(SHEET_ID)
+        ws = sh.worksheet("Amortizacion")
+        data = ws.get_all_values()
+        if not data:
+            return False
+
+        headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+        df_all = pd.DataFrame(data[1:], columns=headers)
+        df_all["usuario_clean"] = normalizar_texto(df_all["usuario"])
+        user_clean = str(usuario).strip().lower()
+
+        df_otros = df_all[df_all["usuario_clean"] != user_clean].copy()
+        df_user = df_all[df_all["usuario_clean"] == user_clean].copy()
+
+        if df_user.empty:
+            st.error("No se encontraron registros de amortización para este usuario.")
+            return False
+
+        df_user["cuota_num_int"] = df_user["cuota_num"].apply(lambda x: int(limpiar_numero(x)))
+        df_user = df_user.sort_values("cuota_num_int").reset_index(drop=True)
+
+        i = TASA_MENSUAL_DEFAULT
+        nuevas_filas_user = []
+        max_cuota_orig = df_user["cuota_num_int"].max()
+
+        cuota_0 = df_user[df_user["cuota_num_int"] == 0]
+        if not cuota_0.empty:
+            saldo_actual = limpiar_numero(cuota_0.iloc[0]["saldo"])
+            nuevas_filas_user.append(cuota_0.iloc[0].to_dict())
+        else:
+            saldo_actual = 0.0
+
+        for idx, row in df_user.iterrows():
+            c_num = row["cuota_num_int"]
+            if c_num == 0:
+                continue
+
+            if c_num < num_cuota_pagar:
+                nuevas_filas_user.append(row.to_dict())
+                saldo_actual = limpiar_numero(row["saldo"])
+            elif c_num == num_cuota_pagar:
+                nuevo_saldo = max(0.0, saldo_actual - capital_pagado)
+                row_dict = row.to_dict()
+                row_dict["intereses"] = f"${interes_pagado:,.0f}"
+                row_dict["capital"] = f"${capital_pagado:,.0f}"
+                row_dict["saldo"] = f"${nuevo_saldo:,.0f}"
+                row_dict["estado"] = "Pagado"
+                nuevas_filas_user.append(row_dict)
+                saldo_actual = nuevo_saldo
+                break
+
+        row_pagada = df_user[df_user["cuota_num_int"] == num_cuota_pagar]
+        if not row_pagada.empty:
+            fecha_ref = parsear_fecha_flexible(row_pagada.iloc[0]["mes_año"]) or dt.now().date()
+        else:
+            fecha_ref = dt.now().date()
+
+        meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+        if saldo_actual > 0:
+            meses_restantes = max_cuota_orig - num_cuota_pagar
+
+            # 1. REDUCIR CUOTA MENSUAL
+            if tipo_recalculo == "reducir_cuota" and meses_restantes > 0:
+                if i > 0:
+                    factor = (1 + i)**meses_restantes
+                    nueva_cuota_fija = round(saldo_actual * (i * factor) / (factor - 1))
+                else:
+                    nueva_cuota_fija = round(saldo_actual / max(1, meses_restantes))
+
+                c_num_next = num_cuota_pagar + 1
+                for idx_m in range(1, meses_restantes + 1):
+                    f_m = fecha_ref + relativedelta(months=idx_m)
+                    mes_txt = f"{meses_cortos[f_m.month - 1]}-{str(f_m.year)[2:]}"
+                    int_m = round(saldo_actual * i)
+                    
+                    if idx_m == meses_restantes:
+                        cap_m = round(saldo_actual)
+                        saldo_actual = 0.0
+                    else:
+                        cap_m = nueva_cuota_fija - int_m
+                        saldo_actual -= cap_m
+
+                    nuevas_filas_user.append({
+                        "usuario": usuario,
+                        "cuota_num": str(c_num_next),
+                        "mes_año": mes_txt,
+                        "intereses": f"${int_m:,.0f}",
+                        "capital": f"${cap_m:,.0f}",
+                        "saldo": f"${max(0.0, saldo_actual):,.0f}",
+                        "estado": "Pendiente"
+                    })
+                    c_num_next += 1
+
+            # 2. REDUCIR PLAZO (TERMINAR ANTES)
+            elif tipo_recalculo == "reducir_plazo":
+                cuota_reg_anterior = 0.0
+                row_f1 = df_user[df_user["cuota_num_int"] == 1]
+                if not row_f1.empty:
+                    cuota_reg_anterior = limpiar_numero(row_f1.iloc[0]["intereses"]) + limpiar_numero(row_f1.iloc[0]["capital"])
+                if cuota_reg_anterior <= 0:
+                    cuota_reg_anterior = (saldo_actual * i) + 100000
+
+                c_num_next = num_cuota_pagar + 1
+                idx_m = 1
+                while saldo_actual > 0 and idx_m <= 120:
+                    f_m = fecha_ref + relativedelta(months=idx_m)
+                    mes_txt = f"{meses_cortos[f_m.month - 1]}-{str(f_m.year)[2:]}"
+                    int_m = round(saldo_actual * i)
+                    cap_m = cuota_reg_anterior - int_m
+
+                    if cap_m >= saldo_actual or idx_m == 120:
+                        cap_m = round(saldo_actual)
+                        saldo_actual = 0.0
+                    else:
+                        saldo_actual -= cap_m
+
+                    nuevas_filas_user.append({
+                        "usuario": usuario,
+                        "cuota_num": str(c_num_next),
+                        "mes_año": mes_txt,
+                        "intereses": f"${int_m:,.0f}",
+                        "capital": f"${cap_m:,.0f}",
+                        "saldo": f"${max(0.0, saldo_actual):,.0f}",
+                        "estado": "Pendiente"
+                    })
+                    c_num_next += 1
+                    idx_m += 1
+
+            # 3. PAGO NORMAL / REGULAR
+            else:
+                cuotas_orig_restantes = df_user[df_user["cuota_num_int"] > num_cuota_pagar]
+                c_num_next = num_cuota_pagar + 1
+                idx_m = 1
+                tot_restantes = len(cuotas_orig_restantes)
+                
+                for _, row_orig in cuotas_orig_restantes.iterrows():
+                    mes_txt = row_orig["mes_año"]
+                    int_m = round(saldo_actual * i)
+                    cap_orig = limpiar_numero(row_orig["capital"])
+
+                    if cap_orig >= saldo_actual or idx_m == tot_restantes:
+                        cap_m = round(saldo_actual)
+                        saldo_actual = 0.0
+                    else:
+                        cap_m = cap_orig
+                        saldo_actual -= cap_m
+
+                    nuevas_filas_user.append({
+                        "usuario": usuario,
+                        "cuota_num": str(c_num_next),
+                        "mes_año": mes_txt,
+                        "intereses": f"${int_m:,.0f}",
+                        "capital": f"${cap_m:,.0f}",
+                        "saldo": f"${max(0.0, saldo_actual):,.0f}",
+                        "estado": row_orig.get("estado", "Pendiente")
+                    })
+                    c_num_next += 1
+                    idx_m += 1
+
+        col_keys = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
+        df_otros_clean = df_otros[col_keys].copy() if not df_otros.empty else pd.DataFrame(columns=col_keys)
+        df_user_clean = pd.DataFrame(nuevas_filas_user)[col_keys]
+
+        df_final = pd.concat([df_otros_clean, df_user_clean], ignore_index=True)
+
+        ws.clear()
+        val_matrix = [col_keys] + df_final.astype(str).values.tolist()
+        ws.update("A1", val_matrix)
+        st.cache_data.clear()
+        return True
+
+    except Exception as e:
+        st.error(f"Error al recalcular la amortización: {e}")
+        return False
+
 @st.cache_data(ttl=2, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
     """Carga datos en tiempo real mediante API gspread con fallback a CSV."""
@@ -319,7 +503,6 @@ def cargar_usuarios() -> pd.DataFrame:
 # FUNCIONES AUXILIARES DE DATOS
 # =========================================================
 def parsear_fecha_flexible(texto):
-    """Convierte libremente strings a fecha de inicio de mes."""
     if pd.isna(texto) or not str(texto).strip():
         return None
     
@@ -514,7 +697,6 @@ else:
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
         usuario_key = st.session_state["usuario"]
 
-        # BOTÓN DESTACADO PARA SUBIR COMPROBANTE
         col_btn_dash, _ = st.columns([1.5, 1])
         with col_btn_dash:
             if st.button("📤 Subir Comprobante de Pago de Cuota", type="primary", use_container_width=True, key="btn_subir_main"):
@@ -774,7 +956,6 @@ else:
                     with st.spinner("Subiendo y registrando comprobante..."):
                         file_bytes = archivo_subido.read()
                         b64_file = base64.b64encode(file_bytes).decode("utf-8")
-                        # Truncado seguro por límites de celda en Google Sheets
                         b64_safe = b64_file[:45000] if len(b64_file) > 45000 else b64_file
                         
                         fecha_hoy_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -1004,31 +1185,76 @@ else:
                     else:
                         st.warning("Por favor ingrese el usuario del asociado.")
 
-        # TAB 3: REGISTRAR CUOTAS INDIVIDUALES
+        # TAB 3: REGISTRAR CUOTAS Y ABONOS EXTRAORDINARIOS CON RECALCULO
         with tab_cuota:
-            st.subheader("Registrar / Modificar Cuota Individual")
-            with st.form("form_crear_cuota"):
-                col_c1, col_c2, col_c3 = st.columns(3)
-                with col_c1:
-                    user_c = st.text_input("Usuario").strip().lower()
-                    num_cuota = st.number_input("Número de Cuota", min_value=1, value=1)
-                with col_c2:
-                    mes_c = st.text_input("Mes/Año (Ej: sep-26)", value="sep-26").strip()
-                    estado_c = st.selectbox("Estado", ["Pagado", "Pendiente", "En Mora"])
-                with col_c3:
-                    interes_c = st.number_input("Intereses ($)", value=0)
-                    capital_c = st.number_input("Capital ($)", value=0)
-                    saldo_c = st.number_input("Saldo Restante ($)", value=0)
+            st.subheader("Registrar Pago / Abono Extraordinario con Recálculo Automático")
+            
+            df_amort = cargar_pestana("Amortizacion")
+            usuarios_lista = []
+            if "usuario" in df_amort.columns:
+                usuarios_lista = sorted(list(set(df_amort["usuario"].dropna().astype(str).str.strip().str.lower())))
+                usuarios_lista = [u for u in usuarios_lista if u and u != "usuario"]
 
-                btn_crear_c = st.form_submit_button("Guardar Cuota en Google Sheets", use_container_width=True)
+            col_u_sel, _ = st.columns([1, 1])
+            with col_u_sel:
+                user_c = st.selectbox("Seleccione el Asociado:", usuarios_lista if usuarios_lista else ["Sin usuarios creados"])
 
-                if btn_crear_c:
-                    if user_c:
-                        fila = [user_c, str(num_cuota), mes_c, f"${interes_c:,.0f}", f"${capital_c:,.0f}", f"${saldo_c:,.0f}", estado_c]
-                        if agregar_fila_sheet("Amortizacion", fila):
-                            st.success(f"✅ Cuota #{num_cuota} guardada para **{user_c}**.")
-                    else:
-                        st.warning("Ingrese el usuario del asociado.")
+            if user_c and user_c != "Sin usuarios creados":
+                df_amort_u = df_amort[df_amort["usuario"].astype(str).str.strip().str.lower() == user_c].copy()
+                
+                if not df_amort_u.empty:
+                    df_amort_u["cuota_num_int"] = df_amort_u["cuota_num"].apply(lambda x: int(limpiar_numero(x)))
+                    df_amort_u = df_amort_u.sort_values("cuota_num_int")
+                    
+                    cuotas_pendientes = df_amort_u[df_amort_u["cuota_num_int"] > 0].copy()
+                    
+                    opciones_cuota_num = cuotas_pendientes["cuota_num_int"].tolist()
+                    
+                    with st.form("form_abono_recalculo"):
+                        col_c1, col_c2 = st.columns(2)
+                        with col_c1:
+                            num_cuota_sel = st.selectbox("Número de Cuota a Pagar:", opciones_cuota_num)
+                            
+                            row_c = cuotas_pendientes[cuotas_pendientes["cuota_num_int"] == num_cuota_sel]
+                            val_int_def = limpiar_numero(row_c.iloc[0]["intereses"]) if not row_c.empty else 0.0
+                            val_cap_def = limpiar_numero(row_c.iloc[0]["capital"]) if not row_c.empty else 0.0
+
+                            interes_pagado_input = st.number_input("Intereses a Pagar ($)", value=float(val_int_def), step=1000.0)
+                            capital_pagado_input = st.number_input("Abono a Capital Pagado ($)", value=float(val_cap_def), step=10000.0)
+
+                        with col_c2:
+                            st.write("**Efecto del Pago / Abono en Cuotas Futuras:**")
+                            tipo_efecto = st.radio(
+                                "Seleccione el tipo de recalculo:",
+                                [
+                                    "🟢 Cuota Regular / Normal (Sin abono extra)",
+                                    "📉 Abono Extra -> Reducir Cuota Mensual (Mantener plazo restante)",
+                                    "⏳ Abono Extra -> Reducir Plazo (Mantener valor de cuota)"
+                                ]
+                            )
+
+                        btn_guardar_abono = st.form_submit_button("💾 Guardar Pago y Recalcular Crédito", use_container_width=True)
+
+                        if btn_guardar_abono:
+                            with st.spinner("Recalculando plan de amortización en Google Sheets..."):
+                                if "Reducir Cuota" in tipo_efecto:
+                                    code_efecto = "reducir_cuota"
+                                elif "Reducir Plazo" in tipo_efecto:
+                                    code_efecto = "reducir_plazo"
+                                else:
+                                    code_efecto = "normal"
+
+                                ok = registrar_pago_con_recalculo(
+                                    user_c,
+                                    int(num_cuota_sel),
+                                    float(interes_pagado_input),
+                                    float(capital_pagado_input),
+                                    code_efecto
+                                )
+
+                                if ok:
+                                    st.success(f"🎉 ¡Pago de Cuota #{num_cuota_sel} registrado y amortización recalculada exitosamente para **{user_c}**!")
+                                    st.rerun()
 
         # TAB 4: VERIFICAR COMPROBANTES DE PAGO
         with tab_verif:
