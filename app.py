@@ -188,12 +188,18 @@ def obtener_cliente_gspread():
         return None
 
 def agregar_fila_sheet(nombre_pestana: str, fila: list):
-    """Agrega una fila nueva al final de la pestaña especificada en Google Sheets."""
+    """Agrega una fila nueva al final de la pestaña especificada en Google Sheets. Si no existe, la crea."""
     gc = obtener_cliente_gspread()
     if gc:
         try:
             sh = gc.open_by_key(SHEET_ID)
-            worksheet = sh.worksheet(nombre_pestana)
+            try:
+                worksheet = sh.worksheet(nombre_pestana)
+            except Exception:
+                worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
+                if nombre_pestana == "Comprobantes":
+                    worksheet.append_row(["usuario", "nombre", "mes_cuota", "fecha_subida", "nombre_archivo", "tipo_archivo", "archivo_b64", "observaciones", "estado"])
+            
             worksheet.append_row(fila)
             st.cache_data.clear()
             return True
@@ -220,6 +226,67 @@ def agregar_filas_sheet(nombre_pestana: str, filas: list):
     else:
         st.error("No se configuraron las credenciales de escritura en Google Sheets.")
         return False
+
+def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo_estado: str = "Pagado"):
+    """Actualiza el estado de una cuota en la pestaña 'Amortizacion'."""
+    gc = obtener_cliente_gspread()
+    if gc:
+        try:
+            sh = gc.open_by_key(SHEET_ID)
+            ws = sh.worksheet("Amortizacion")
+            data = ws.get_all_values()
+            if not data:
+                return False
+            
+            headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            col_user = headers.index("usuario") if "usuario" in headers else 0
+            col_cuota = headers.index("cuota_num") if "cuota_num" in headers else 1
+            col_mes = headers.index("mes_año") if "mes_año" in headers else 2
+            col_estado = headers.index("estado") if "estado" in headers else len(headers) - 1
+
+            target = str(identificador_cuota).strip().lower()
+
+            for idx, row in enumerate(data[1:], start=2):
+                u = str(row[col_user]).strip().lower()
+                c = str(row[col_cuota]).strip().lower()
+                m = str(row[col_mes]).strip().lower()
+                
+                if u == str(usuario).strip().lower():
+                    if (c in target and len(c) > 0) or (m in target and len(m) > 0) or target in f"cuota #{c} ({m})":
+                        ws.update_cell(idx, col_estado + 1, nuevo_estado)
+                        st.cache_data.clear()
+                        return True
+        except Exception as e:
+            st.error(f"Error al actualizar la tabla Amortización: {e}")
+            return False
+    return False
+
+def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: str = "Aprobado"):
+    """Actualiza el estado de un comprobante en la pestaña 'Comprobantes'."""
+    gc = obtener_cliente_gspread()
+    if gc:
+        try:
+            sh = gc.open_by_key(SHEET_ID)
+            ws = sh.worksheet("Comprobantes")
+            data = ws.get_all_values()
+            if not data:
+                return False
+            headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            col_user = headers.index("usuario") if "usuario" in headers else 0
+            col_mes = headers.index("mes_cuota") if "mes_cuota" in headers else 2
+            col_estado = headers.index("estado") if "estado" in headers else len(headers) - 1
+
+            for idx, row in enumerate(data[1:], start=2):
+                u = str(row[col_user]).strip().lower()
+                m = str(row[col_mes]).strip().lower()
+                if u == str(usuario).strip().lower() and m == str(mes_cuota).strip().lower():
+                    ws.update_cell(idx, col_estado + 1, nuevo_estado)
+                    st.cache_data.clear()
+                    return True
+        except Exception as e:
+            st.error(f"Error al actualizar la pestaña Comprobantes: {e}")
+            return False
+    return False
 
 @st.cache_data(ttl=2, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
@@ -368,7 +435,7 @@ if not st.session_state["autenticado"]:
                             st.error(f"Error al conectar: {e}")
 
 # =========================================================
-# DASHBOARD PRINCIPAL
+# DASHBOARD Y NAVEGACIÓN
 # =========================================================
 else:
     with st.sidebar:
@@ -392,11 +459,16 @@ else:
         )
 
         txt_dash = "▶️ 📊 Mi Estado de Cuenta" if st.session_state["pantalla"] == "dashboard" else "📊 Mi Estado de Cuenta"
+        txt_subir = "▶️ 📤 Subir Comprobante" if st.session_state["pantalla"] == "subir_comprobante" else "📤 Subir Comprobante"
         txt_sim = "▶️ 🧮 Simulador de Crédito" if st.session_state["pantalla"] == "simulador" else "🧮 Simulador de Crédito"
         txt_adm = "▶️ 🛠️ Panel de Administración" if st.session_state["pantalla"] == "admin" else "🛠️ Panel de Administración"
 
         if st.button(txt_dash, use_container_width=True, key="btn_dashboard"):
             st.session_state["pantalla"] = "dashboard"
+            st.rerun()
+
+        if st.button(txt_subir, use_container_width=True, key="btn_subir_side"):
+            st.session_state["pantalla"] = "subir_comprobante"
             st.rerun()
 
         if st.button(txt_sim, use_container_width=True, key="btn_simulador"):
@@ -435,9 +507,21 @@ else:
         unsafe_allow_html=True
     )
 
+    # ---------------------------------------------------------
+    # 1. PANTALLA: ESTADO DE CUENTA (DASHBOARD)
+    # ---------------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
         usuario_key = st.session_state["usuario"]
+
+        # BOTÓN DESTACADO PARA SUBIR COMPROBANTE
+        col_btn_dash, _ = st.columns([1.5, 1])
+        with col_btn_dash:
+            if st.button("📤 Subir Comprobante de Pago de Cuota", type="primary", use_container_width=True, key="btn_subir_main"):
+                st.session_state["pantalla"] = "subir_comprobante"
+                st.rerun()
+
+        st.write("")
 
         try:
             with st.spinner("Cargando tu información..."):
@@ -641,9 +725,80 @@ else:
         except Exception as e:
             st.error(f"Error al procesar la información: {e}")
 
-    # =========================================================
-    # SIMULADOR DE CRÉDITO
-    # =========================================================
+    # ---------------------------------------------------------
+    # 2. PANTALLA: SUBIR COMPROBANTE DE PAGO
+    # ---------------------------------------------------------
+    elif st.session_state["pantalla"] == "subir_comprobante":
+        st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📤 Subir Comprobante de Pago</h3>', unsafe_allow_html=True)
+        usuario_key = st.session_state["usuario"]
+        
+        df_amort = cargar_pestana("Amortizacion")
+        opciones_cuotas = []
+        
+        if "usuario" in df_amort.columns:
+            df_amort["usuario"] = normalizar_texto(df_amort["usuario"])
+            amort_user = df_amort[df_amort["usuario"] == usuario_key].copy()
+            if not amort_user.empty:
+                amort_cuotas = amort_user[~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])].copy()
+                for _, row in amort_cuotas.iterrows():
+                    c_num = str(row.get("cuota_num", "")).strip()
+                    m_txt = str(row.get("mes_año", "")).strip()
+                    est = str(row.get("estado", "Pendiente")).strip()
+                    opciones_cuotas.append(f"Cuota #{c_num} ({m_txt}) - Estado actual: {est}")
+        
+        if not opciones_cuotas:
+            opciones_cuotas = ["General / Cuota Mes Actual"]
+
+        st.markdown("""
+        <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
+            <p style="color: #166534; font-size: 1.05rem; font-weight: 700; margin:0;">
+                📌 Adjunta tu soporte de pago en cualquier formato (imagen, PDF, Word). El administrador revisará la información y actualizará tu estado a 'Pagado'.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("form_subir_comprobante"):
+            cuota_seleccionada = st.selectbox("1. Seleccione el mes / cuota que va a pagar:", opciones_cuotas)
+            archivo_subido = st.file_uploader(
+                "2. Seleccione o arrastre el archivo del comprobante (JPG, PNG, PDF, DOCX, etc.):",
+                type=["png", "jpg", "jpeg", "pdf", "docx"]
+            )
+            comentarios = st.text_input("3. Observaciones adicionales (Opcional):").strip()
+            
+            submit_comp = st.form_submit_button("📤 Enviar Comprobante para Verificación", use_container_width=True)
+
+            if submit_comp:
+                if archivo_subido is None:
+                    st.warning("⚠️ Debe adjuntar un archivo de comprobante antes de enviar.")
+                else:
+                    with st.spinner("Subiendo y registrando comprobante..."):
+                        file_bytes = archivo_subido.read()
+                        b64_file = base64.b64encode(file_bytes).decode("utf-8")
+                        # Truncado seguro por límites de celda en Google Sheets
+                        b64_safe = b64_file[:45000] if len(b64_file) > 45000 else b64_file
+                        
+                        fecha_hoy_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                        
+                        fila_comp = [
+                            usuario_key,
+                            st.session_state["nombre"],
+                            cuota_seleccionada,
+                            fecha_hoy_str,
+                            archivo_subido.name,
+                            archivo_subido.type,
+                            b64_safe,
+                            comentarios,
+                            "Pendiente"
+                        ]
+                        
+                        if agregar_fila_sheet("Comprobantes", fila_comp):
+                            st.success("✅ ¡Comprobante enviado exitosamente! El administrador lo revisará y cambiará el estado a 'Pagado'.")
+                        else:
+                            st.error("No se pudo registrar el comprobante. Intente de nuevo.")
+
+    # ---------------------------------------------------------
+    # 3. PANTALLA: SIMULADOR DE CRÉDITO
+    # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
         tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
@@ -742,13 +897,18 @@ else:
         st.write("")
         st.link_button("📝 Solicitar este Crédito", FORM_URL, use_container_width=True)
 
-    # =========================================================
-    # PANEL DE ADMINISTRACIÓN
-    # =========================================================
+    # ---------------------------------------------------------
+    # 4. PANTALLA: PANEL DE ADMINISTRACIÓN
+    # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
         
-        tab_user, tab_prestamo, tab_cuota = st.tabs(["👤 Crear Usuario", "💵 Registrar Préstamo", "📅 Registrar Pago / Cuota"])
+        tab_user, tab_prestamo, tab_cuota, tab_verif = st.tabs([
+            "👤 Crear Usuario", 
+            "💵 Registrar Préstamo", 
+            "📅 Registrar Pago / Cuota",
+            "📩 Verificar Comprobantes"
+        ])
 
         # TAB 1: CREAR USUARIOS
         with tab_user:
@@ -869,3 +1029,67 @@ else:
                             st.success(f"✅ Cuota #{num_cuota} guardada para **{user_c}**.")
                     else:
                         st.warning("Ingrese el usuario del asociado.")
+
+        # TAB 4: VERIFICAR COMPROBANTES DE PAGO
+        with tab_verif:
+            st.subheader("📩 Comprobantes de Pago Pendientes por Verificar")
+            df_comp = cargar_pestana("Comprobantes")
+            
+            if df_comp.empty or "estado" not in df_comp.columns:
+                st.info("No hay comprobantes pendientes de verificación en este momento.")
+            else:
+                df_comp["estado_clean"] = normalizar_texto(df_comp["estado"])
+                pendientes = df_comp[df_comp["estado_clean"] == "pendiente"]
+                
+                if pendientes.empty:
+                    st.success("🎉 ¡No hay comprobantes pendientes! Todos los pagos han sido verificados.")
+                else:
+                    for idx, row in pendientes.iterrows():
+                        u_id = row.get("usuario", "N/A")
+                        u_nom = row.get("nombre", u_id)
+                        cuota_sel = row.get("mes_cuota", "N/A")
+                        fecha_sub = row.get("fecha_subida", "N/A")
+                        fname = row.get("nombre_archivo", "comprobante")
+                        ftype = row.get("tipo_archivo", "application/octet-stream")
+                        b64_data = row.get("archivo_b64", "")
+                        obs = row.get("observaciones", "")
+                        
+                        st.markdown(f"""
+                        <div class="card" style="border-left: 5px solid #b45309; background-color: #fffbebfb;">
+                            <h4 style="margin:0; color:#1e3a8a;">👤 Asociado: {u_nom} (Cédula: {u_id})</h4>
+                            <p style="margin: 6px 0 2px 0;"><strong>Cuota/Mes seleccionado:</strong> <span style="color:#2563eb; font-weight:700;">{cuota_sel}</span></p>
+                            <p style="margin: 2px 0;"><strong>Fecha de Envío:</strong> {fecha_sub}</p>
+                            <p style="margin: 2px 0;"><strong>Observaciones del Asociado:</strong> {obs if obs else 'Sin observaciones'}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        c_file, c_action = st.columns([1, 1])
+                        with c_file:
+                            if b64_data:
+                                try:
+                                    file_bytes = base64.b64decode(b64_data)
+                                    if "image" in ftype.lower() or fname.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                        st.image(file_bytes, caption=fname, width=300)
+                                    st.download_button(
+                                        label=f"📥 Descargar Archivo ({fname})",
+                                        data=file_bytes,
+                                        file_name=fname,
+                                        mime=ftype,
+                                        key=f"dl_{idx}"
+                                    )
+                                except Exception:
+                                    st.warning("⚠️ No se pudo previsualizar el archivo. Descárguelo usando el botón superior.")
+
+                        with c_action:
+                            st.write("")
+                            st.write("")
+                            if st.button(f"✅ Aprobar Pago y Cambiar Estado a PAGADO", key=f"ok_{idx}", type="primary", use_container_width=True):
+                                with st.spinner("Actualizando Google Sheets..."):
+                                    ok_amort = actualizar_estado_amortizacion(u_id, cuota_sel, "Pagado")
+                                    ok_comp = actualizar_estado_comprobante(u_id, cuota_sel, "Aprobado")
+                                    if ok_amort or ok_comp:
+                                        st.success(f"✅ El pago de **{u_nom}** ha sido verificado e ingresado correctamente.")
+                                        st.rerun()
+                                    else:
+                                        st.error("Error al actualizar la base de datos.")
+                        st.divider()
