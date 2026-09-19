@@ -156,10 +156,51 @@ st.set_page_config(
 )
 
 # =========================================================
-# ESTILOS CSS - INTERFAZ LIMPIA Y MODERNA
+# ESTILOS CSS - ACCESIBILIDAD Y BARRA LATERAL DESTACADA
 # =========================================================
 st.markdown("""
 <style>
+    /* Ampliar y destacar la Barra Lateral */
+    [data-testid="stSidebar"] {
+        width: 340px !important;
+        background-color: #f8fafc !important;
+        border-right: 3px solid #cbd5e1 !important;
+    }
+    
+    /* Botones de Menú Grandes e Intuitivos */
+    [data-testid="stSidebar"] .stButton > button {
+        width: 100% !important;
+        height: 56px !important;
+        font-size: 1.10rem !important;
+        font-weight: 700 !important;
+        border-radius: 12px !important;
+        margin-bottom: 8px !important;
+        border: 2px solid #2563eb !important;
+        background-color: #ffffff !important;
+        color: #1e3a8a !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border-color: #1d4ed8 !important;
+        transform: translateY(-2px);
+    }
+
+    /* Botón especial para Cerrar Sesión */
+    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+        border-color: #dc2626 !important;
+        background-color: #fef2f2 !important;
+        color: #991b1b !important;
+    }
+    [data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+        background-color: #dc2626 !important;
+        color: #ffffff !important;
+    }
+
+    /* Tarjetas principales */
     .card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -173,49 +214,49 @@ st.markdown("""
         flex-direction: column;
     }
     .metric-label {
-        font-size: 0.80rem;
+        font-size: 0.85rem;
         color: #6b7280;
-        font-weight: 600;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-bottom: 4px;
     }
     .metric-value {
-        font-size: 1.30rem;
-        font-weight: 700;
+        font-size: 1.35rem;
+        font-weight: 800;
         color: #111827;
     }
     .status-tag-green {
         display: inline-block;
         background-color: #dcfce7;
         color: #15803d;
-        padding: 4px 12px;
+        padding: 6px 14px;
         border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 700;
+        font-size: 0.90rem;
+        font-weight: 800;
     }
     .status-tag-yellow {
         display: inline-block;
         background-color: #fef3c7;
         color: #b45309;
-        padding: 4px 12px;
+        padding: 6px 14px;
         border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 700;
+        font-size: 0.90rem;
+        font-weight: 800;
     }
     .status-tag-red {
         display: inline-block;
         background-color: #fee2e2;
         color: #b91c1c;
-        padding: 4px 12px;
+        padding: 6px 14px;
         border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 700;
+        font-size: 0.90rem;
+        font-weight: 800;
     }
     .header-box {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
         color: white;
-        padding: 18px 24px;
+        padding: 20px 24px;
         border-radius: 12px;
         margin-bottom: 24px;
         box-shadow: 0 4px 10px rgba(30, 58, 138, 0.15);
@@ -259,12 +300,12 @@ if not st.session_state["autenticado"]:
         st.write("")
         st.write("")
         st.markdown(
-            f"""<div style="text-align: center;"><img src="{LOGO_URL}" width="180"></div>""",
+            f"""<div style="text-align: center;"><img src="{LOGO_URL}" width="200"></div>""",
             unsafe_allow_html=True
         )
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
-            user_input = st.text_input("Usuario").strip().lower()
+            user_input = st.text_input("Usuario (Cédula)").strip().lower()
             pass_input = st.text_input("Contraseña", type="password").strip()
             submit = st.form_submit_button("Ingresar a mi Fondo", use_container_width=True)
 
@@ -306,34 +347,46 @@ else:
         st.markdown(
             f"""
             <div style="text-align: center; padding: 10px 0;">
-                <img src="{LOGO_URL}" width="140"><br><br>
-                <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
-                    <span style="font-size: 0.80rem; color: #6b7280;">Bienvenido(a)</span><br>
-                    <strong style="color: #111827; font-size: 1rem;">👤 {st.session_state['nombre']}</strong><br>
-                    <small style="color: #2563eb; font-weight: 600;">Rol: {st.session_state['rol'].capitalize()}</small>
+                <img src="{LOGO_URL}" width="160"><br><br>
+                <div style="background-color: #ffffff; padding: 14px; border-radius: 10px; border: 1px solid #cbd5e1; margin-bottom: 15px;">
+                    <span style="font-size: 0.85rem; color: #6b7280; font-weight: 600;">Bienvenido(a)</span><br>
+                    <strong style="color: #111827; font-size: 1.1rem;">👤 {st.session_state['nombre']}</strong><br>
+                    <small style="color: #2563eb; font-weight: 700;">Rol: {st.session_state['rol'].capitalize()}</small>
                 </div>
+            </div>
+            
+            <div style="background-color: #e0f2fe; border-left: 5px solid #0284c7; padding: 10px 12px; border-radius: 8px; margin-bottom: 16px;">
+                <strong style="color: #0369a1; font-size: 0.95rem;">📌 MENÚ DE NAVEGACIÓN</strong><br>
+                <span style="color: #0c4a6e; font-size: 0.85rem;">Toque cualquier botón para cambiar de sección:</span>
             </div>
             """,
             unsafe_allow_html=True
         )
-        st.subheader("⚙️ Menú Principal")
-        if st.button("📊 Mi Estado de Cuenta", use_container_width=True, key="btn_dashboard"):
+
+        # Destacar botón activo para orientar al usuario
+        txt_dash = "▶️ 📊 Mi Estado de Cuenta" if st.session_state["pantalla"] == "dashboard" else "📊 Mi Estado de Cuenta"
+        txt_sim = "▶️ 🧮 Simulador de Crédito" if st.session_state["pantalla"] == "simulador" else "🧮 Simulador de Crédito"
+        txt_adm = "▶️ 🛠️ Panel de Administración" if st.session_state["pantalla"] == "admin" else "🛠️ Panel de Administración"
+
+        if st.button(txt_dash, use_container_width=True, key="btn_dashboard"):
             st.session_state["pantalla"] = "dashboard"
             st.rerun()
-        if st.button("🧮 Simulador de Crédito", use_container_width=True, key="btn_simulador"):
+
+        if st.button(txt_sim, use_container_width=True, key="btn_simulador"):
             st.session_state["pantalla"] = "simulador"
             st.rerun()
-        
+
         if st.session_state["rol"] == "admin":
             st.divider()
-            if st.button("🛠️ Panel de Administración", use_container_width=True, key="btn_admin"):
+            if st.button(txt_adm, use_container_width=True, key="btn_admin"):
                 st.session_state["pantalla"] = "admin"
                 st.rerun()
 
+        st.divider()
         st.link_button(
             "📝 Solicitud de Crédito", FORM_URL, use_container_width=True
         )
-        st.divider()
+        st.write("")
         if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
             st.session_state["autenticado"] = False
             st.session_state["usuario"] = ""
@@ -346,11 +399,11 @@ else:
         f"""
         <div class="header-box" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <h2 style="margin:0; color:white; font-size: 1.5rem; font-weight:700;">FEDESO</h2>
-                <span style="font-size: 0.9rem; opacity: 0.9;">Fondo Empresarial de Solidaridad</span>
+                <h2 style="margin:0; color:white; font-size: 1.7rem; font-weight:800;">FEDESO</h2>
+                <span style="font-size: 1rem; opacity: 0.95;">Fondo Empresarial de Solidaridad</span>
             </div>
             <div style="text-align: right;">
-                <span style="font-size: 0.85rem; opacity: 0.8;">Portal de Asociados</span>
+                <span style="font-size: 0.95rem; font-weight: 600; opacity: 0.9;">Portal de Asociados</span>
             </div>
         </div>
         """,
@@ -459,7 +512,7 @@ else:
                         <div class="card">
                             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px;">
                                 <h4 style="margin:0; color:#1e3a8a; font-weight:700;">📊 RESUMEN DE PRÉSTAMO</h4>
-                                <span style="font-size: 0.85rem; color:#6b7280;">Asociado: <strong>{st.session_state['nombre']}</strong></span>
+                                <span style="font-size: 0.95rem; color:#4b5563;">Asociado: <strong>{st.session_state['nombre']}</strong></span>
                             </div>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
                                 <div class="metric-container">
@@ -499,11 +552,11 @@ else:
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px;">
                         <div class="metric-container">
                             <span class="metric-label">Progreso de Pago</span>
-                            <span class="metric-value">{num_pagadas} <span style="font-size:0.9rem; font-weight:normal; color:#6b7280;">de {total_cuotas} cuotas</span></span>
+                            <span class="metric-value">{num_pagadas} <span style="font-size:0.95rem; font-weight:normal; color:#6b7280;">de {total_cuotas} cuotas</span></span>
                         </div>
                         <div class="metric-container">
                             <span class="metric-label">Próximo Mes a Pagar</span>
-                            <span class="metric-value" style="font-size: 1.1rem; color: #b45309;">{estado_proxima_str}</span>
+                            <span class="metric-value" style="font-size: 1.2rem; color: #b45309;">{estado_proxima_str}</span>
                         </div>
                         <div class="metric-container">
                             <span class="metric-label">Saldo Pendiente Estimado</span>
@@ -511,11 +564,11 @@ else:
                         </div>
                     </div>
                     <div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #6b7280; font-weight: 600; margin-bottom: 6px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.90rem; color: #4b5563; font-weight: 700; margin-bottom: 6px;">
                             <span>Progreso Actual de Amortización</span>
                             <span>{pct_val:.1f}% Pagado</span>
                         </div>
-                        <div style="background-color: #e5e7eb; border-radius: 10px; height: 10px; width: 100%; overflow: hidden;">
+                        <div style="background-color: #e5e7eb; border-radius: 10px; height: 12px; width: 100%; overflow: hidden;">
                             <div style="background-color: #2563eb; width: {pct_val}%; height: 100%; border-radius: 10px;"></div>
                         </div>
                     </div>
@@ -572,7 +625,7 @@ else:
 
         st.markdown(f"""
         <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe;">
-            <span style="color: #1e40af; font-size: 0.95rem;">💡 <strong>CALCULADORA DE CUOTAS:</strong> Diseña tu plan de crédito ideal. Tasa de interés mensual aplicada: <strong>{tasa_display}</strong></span>
+            <span style="color: #1e40af; font-size: 1rem;">💡 <strong>CALCULADORA DE CUOTAS:</strong> Diseña tu plan de crédito ideal. Tasa de interés mensual aplicada: <strong>{tasa_display}</strong></span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -603,16 +656,16 @@ else:
         fecha_fin_str = f"{meses_esp[fecha_fin.month - 1]} de {fecha_fin.year}"
 
         st.markdown(f"""
-        <div class="card" style="background-color: #f8fafc; border-left: 4px solid #2563eb;">
+        <div class="card" style="background-color: #f8fafc; border-left: 5px solid #2563eb;">
             <h4 style="margin-top:0; color:#1e3a8a; font-weight:700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">📊 RESULTADO DE LA SIMULACIÓN</h4>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 12px;">
                 <div class="metric-container">
                     <span class="metric-label">Cuota Mensual Estimada</span>
-                    <span class="metric-value" style="color:#2563eb; font-size: 1.4rem;">${cuota_sim:,.0f}</span>
+                    <span class="metric-value" style="color:#2563eb; font-size: 1.5rem;">${cuota_sim:,.0f}</span>
                 </div>
                 <div class="metric-container">
                     <span class="metric-label">Fecha de Finalización</span>
-                    <span class="metric-value" style="font-size: 1.1rem;">{fecha_fin_str}</span>
+                    <span class="metric-value" style="font-size: 1.15rem;">{fecha_fin_str}</span>
                 </div>
                 <div class="metric-container">
                     <span class="metric-label">Total a Pagar Estimado</span>
