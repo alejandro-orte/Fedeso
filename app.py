@@ -34,7 +34,6 @@ MESES_MAP = {
     "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
 }
 
-# Encabezados estandarizados para cada pestaña
 HEADERS_USUARIOS = ["usuario", "contrasena", "nombre", "rol"]
 HEADERS_RESUMEN = ["usuario", "monto", "plazo", "tasa_mv", "cuota"]
 HEADERS_AMORTIZACION = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
@@ -67,17 +66,14 @@ st.markdown("""
         display: none !important;
         visibility: hidden !important;
     }
-
     [data-testid="stElementToolbar"] {
         display: none !important;
     }
-
     [data-testid="stSidebar"] {
         width: 340px !important;
         background-color: #f8fafc !important;
         border-right: 3px solid #cbd5e1 !important;
     }
-    
     [data-testid="stSidebar"] .stButton > button {
         width: 100% !important;
         height: 56px !important;
@@ -91,14 +87,12 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.06) !important;
         transition: all 0.2s ease !important;
     }
-    
     [data-testid="stSidebar"] .stButton > button:hover {
         background-color: #2563eb !important;
         color: #ffffff !important;
         border-color: #1d4ed8 !important;
         transform: translateY(-2px);
     }
-
     [data-testid="stSidebar"] .stButton > button[kind="primary"] {
         border-color: #dc2626 !important;
         background-color: #fef2f2 !important;
@@ -108,7 +102,6 @@ st.markdown("""
         background-color: #dc2626 !important;
         color: #ffffff !important;
     }
-
     .card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -1372,42 +1365,21 @@ else:
                                         st.error("Error al actualizar la base de datos.")
                         st.divider()
 
-        # TAB 5: RESUMEN FINANCIERO DEL FONDO (EXCEL)
+        # TAB 5: RESUMEN FINANCIERO DEL FONDO (Directo desde la pestaña 'admin' de Google Sheets)
         with tab_resumen_fondo:
             st.subheader("📈 Resumen General y Balance del Fondo FEDESO")
             st.markdown("""
             <div class="card" style="background-color: #f8fafc; border-left: 5px solid #1e3a8a;">
                 <p style="color: #1e3a8a; font-size: 1.05rem; font-weight: 700; margin:0;">
-                    📊 Indicadores financieros globales consolidados del fondo de ahorro y aportes:
+                    📊 Información leída directamente desde la pestaña <strong>'admin'</strong> de Google Sheets. Modifícala en tu hoja de cálculo y se actualizará automáticamente aquí:
                 </p>
             </div>
             """, unsafe_allow_html=True)
 
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                st.metric("Total Aportes Asociados", "$52,480,000", "Histórico acumulado")
-                st.metric("Intereses de Cuenta", "$3,295,502", "Rendimientos bancarios")
-            with col_f2:
-                st.metric("Intereses de Préstamos", "$3,521,869", "Generados por cartera")
-                st.metric("Intereses de CDT", "$2,591,054", "Inversiones CDT")
-            with col_f3:
-                st.metric("Total Ingresos Generados", "$61,973,725", "Acumulado total")
-                st.metric("Saldo Disponible Neto", "$61,543,511", "Después de costos")
+            # Cargamos dinámicamente la pestaña 'admin' desde Google Sheets
+            df_admin_sheet = cargar_pestana("admin")
 
-            st.write("")
-            st.markdown("#### 📋 Detalle de Cartera y Costos")
-            
-            df_resumen_tabla = pd.DataFrame([
-                {"Concepto / Indicador Financiero": "Total Aportes Asociados", "Valor Acumulado": "$52,480,000[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Intereses de Cuenta Bancaria", "Valor Acumulado": "$3,295,502[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Intereses por Préstamos", "Valor Acumulado": "$3,521,869.56[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Intereses Generados por CDT", "Valor Acumulado": "$2,591,054[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Ingresos por Desayunos / Otros", "Valor Acumulado": "$85,300[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Total Ingresos Brutos", "Valor Acumulado": "$61,973,725.56[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Retenciones y Costos (4x1000)", "Valor Acumulado": "-$430,214[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Saldo Neto Después de Costos", "Valor Acumulado": "$61,543,511.56[cite: 8]"},
-                {"Concepto / Indicador Financiero": "Capital Prestado a Cartera", "Valor Acumulado": "-$99,628,000"},
-                {"Concepto / Indicador Financiero": "Capital de Préstamos Pagado", "Valor Acumulado": "$65,824,131.27"}
-            ])
-
-            st.dataframe(df_resumen_tabla, use_container_width=True, hide_index=True)
+            if not df_admin_sheet.empty:
+                st.dataframe(df_admin_sheet, use_container_width=True, hide_index=True)
+            else:
+                st.warning("⚠️ No se encontró información en la pestaña 'admin' de Google Sheets. Asegúrate de crear una pestaña llamada 'admin' en tu documento para visualizar y editar los datos.")
