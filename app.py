@@ -1031,6 +1031,56 @@ else:
                     else:
                         st.error("No se pudo enviar la notificación. Verifique la conexión con Google Sheets.")
 
+                        import streamlit as st
+import pandas as pd
+
+# -------------------------------------------------------------------
+# PEGAR ESTO DEBAJO DE TU CÓDIGO ACTUAL DE NOTIFICACIONES PENDIENTES
+# -------------------------------------------------------------------
+
+st.markdown("<br><hr>", unsafe_allow_html=True) # Separador visual
+
+# Título de la nueva sección
+st.markdown("<h3 style='color: #1e3a8a;'>📁 Historial de Pagos Confirmados</h3>", unsafe_allow_html=True)
+
+# 1. Crear filtros de búsqueda usando columnas de Streamlit
+col1, col2, col3 = st.columns([2, 1, 1])
+
+with col1:
+    buscar_texto = st.text_input("🔍 Buscar asociado o ID", placeholder="Ej. Luis Alejandro...")
+with col2:
+    fecha_notificacion = st.date_input("📅 Fecha de notificación", value=None)
+with col3:
+    st.write("") # Espaciador para alinear el botón
+    st.write("")
+    btn_filtrar = st.button("Filtrar Historial", use_container_width=True)
+
+# 2. Datos de prueba (Aquí luego conectarás tu base de datos o archivo)
+datos_historial = {
+    "ID Ref": ["#PAG-1024", "#PAG-1023", "#PAG-1022", "#PAG-1021"],
+    "Asociado": ["Luis Alejandro Ortega Garcia", "María Gómez", "Carlos Rodríguez", "Ana Martínez"],
+    "Monto": ["$150,000 COP", "$85,000 COP", "$200,000 COP", "$50,000 COP"],
+    "Fecha Notificación": ["2026-09-24 10:30", "2026-09-22 16:20", "2026-09-20 09:00", "2026-09-18 14:15"],
+    "Fecha Confirmación": ["2026-09-25 09:15", "2026-09-23 11:00", "2026-09-21 14:30", "2026-09-19 08:45"],
+    "Estado": ["✅ Confirmado", "✅ Confirmado", "✅ Confirmado", "✅ Confirmado"]
+}
+
+# Convertir a DataFrame de Pandas
+df_historial = pd.DataFrame(datos_historial)
+
+# (Opcional) Lógica simple para que el filtro funcione con los datos de prueba
+if buscar_texto:
+    df_historial = df_historial[df_historial["Asociado"].str.contains(buscar_texto, case=False) | 
+                                df_historial["ID Ref"].str.contains(buscar_texto, case=False)]
+
+# 3. Mostrar la tabla interactiva
+st.dataframe(
+    df_historial,
+    use_container_width=True,
+    hide_index=True,
+    height=250 # Altura de la tabla para hacerla compacta
+)
+
     # ---------------------------------------------------------
     # 3. PANTALLA: SIMULADOR DE CRÉDITO
     # ---------------------------------------------------------
