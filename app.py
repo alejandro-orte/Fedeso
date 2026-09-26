@@ -1031,56 +1031,6 @@ else:
                     else:
                         st.error("No se pudo enviar la notificación. Verifique la conexión con Google Sheets.")
 
-                        import streamlit as st
-import pandas as pd
-
-# -------------------------------------------------------------------
-# PEGAR ESTO DEBAJO DE TU CÓDIGO ACTUAL DE NOTIFICACIONES PENDIENTES
-# -------------------------------------------------------------------
-
-st.markdown("<br><hr>", unsafe_allow_html=True) # Separador visual
-
-# Título de la nueva sección
-st.markdown("<h3 style='color: #1e3a8a;'>📁 Historial de Pagos Confirmados</h3>", unsafe_allow_html=True)
-
-# 1. Crear filtros de búsqueda usando columnas de Streamlit
-col1, col2, col3 = st.columns([2, 1, 1])
-
-with col1:
-    buscar_texto = st.text_input("🔍 Buscar asociado o ID", placeholder="Ej. Luis Alejandro...")
-with col2:
-    fecha_notificacion = st.date_input("📅 Fecha de notificación", value=None)
-with col3:
-    st.write("") # Espaciador para alinear el botón
-    st.write("")
-    btn_filtrar = st.button("Filtrar Historial", use_container_width=True)
-
-# 2. Datos de prueba (Aquí luego conectarás tu base de datos o archivo)
-datos_historial = {
-    "ID Ref": ["#PAG-1024", "#PAG-1023", "#PAG-1022", "#PAG-1021"],
-    "Asociado": ["Luis Alejandro Ortega Garcia", "María Gómez", "Carlos Rodríguez", "Ana Martínez"],
-    "Monto": ["$150,000 COP", "$85,000 COP", "$200,000 COP", "$50,000 COP"],
-    "Fecha Notificación": ["2026-09-24 10:30", "2026-09-22 16:20", "2026-09-20 09:00", "2026-09-18 14:15"],
-    "Fecha Confirmación": ["2026-09-25 09:15", "2026-09-23 11:00", "2026-09-21 14:30", "2026-09-19 08:45"],
-    "Estado": ["✅ Confirmado", "✅ Confirmado", "✅ Confirmado", "✅ Confirmado"]
-}
-
-# Convertir a DataFrame de Pandas
-df_historial = pd.DataFrame(datos_historial)
-
-# (Opcional) Lógica simple para que el filtro funcione con los datos de prueba
-if buscar_texto:
-    df_historial = df_historial[df_historial["Asociado"].str.contains(buscar_texto, case=False) | 
-                                df_historial["ID Ref"].str.contains(buscar_texto, case=False)]
-
-# 3. Mostrar la tabla interactiva
-st.dataframe(
-    df_historial,
-    use_container_width=True,
-    hide_index=True,
-    height=250 # Altura de la tabla para hacerla compacta
-)
-
     # ---------------------------------------------------------
     # 3. PANTALLA: SIMULADOR DE CRÉDITO
     # ---------------------------------------------------------
@@ -1415,6 +1365,60 @@ st.dataframe(
                                         st.error("Error al actualizar la base de datos.")
                         st.divider()
 
+                # --- NUEVA SECCIÓN: HISTORIAL DE PAGOS CONFIRMADOS ---
+                st.markdown("<br><hr>", unsafe_allow_html=True)
+                st.markdown("<h3 style='color: #1e3a8a;'>📁 Historial de Pagos Confirmados</h3>", unsafe_allow_html=True)
+                
+                # Filtrar solo los pagos aprobados
+                confirmados = df_comp[df_comp["estado_clean"] == "aprobado"].copy()
+                
+                if confirmados.empty:
+                    st.info("Aún no hay pagos confirmados en el historial.")
+                else:
+                    # Filtros de búsqueda para el historial
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    with col1:
+                        buscar_texto = st.text_input("🔍 Buscar asociado o ID", placeholder="Ej. Luis Alejandro...")
+                    with col2:
+                        fecha_notificacion = st.date_input("📅 Fecha de notificación", value=None)
+                    with col3:
+                        st.write("") 
+                        st.write("")
+                        btn_filtrar = st.button("Filtrar Historial", use_container_width=True)
+
+                    # Lógica de filtrado
+                    if buscar_texto:
+                        confirmados = confirmados[
+                            confirmados["nombre"].str.contains(buscar_texto, case=False, na=False) | 
+                            confirmados["usuario"].str.contains(buscar_texto, case=False, na=False)
+                        ]
+                    
+                    if fecha_notificacion:
+                        fecha_str = fecha_notificacion.strftime("%Y-%m-%d")
+                        confirmados = confirmados[confirmados["fecha_subida"].str.contains(fecha_str, case=False, na=False)]
+
+                    # Preparar los datos para mostrar en la tabla interactiva
+                    if not confirmados.empty:
+                        df_mostrar = confirmados[["usuario", "nombre", "mes_cuota", "fecha_subida", "estado"]].rename(
+                            columns={
+                                "usuario": "ID / Cédula",
+                                "nombre": "Asociado",
+                                "mes_cuota": "Cuota Notificada",
+                                "fecha_subida": "Fecha Notificación",
+                                "estado": "Estado"
+                            }
+                        )
+                        
+                        # Tabla interactiva
+                        st.dataframe(
+                            df_mostrar,
+                            use_container_width=True,
+                            hide_index=True,
+                            height=250
+                        )
+                    else:
+                        st.warning("No se encontraron resultados para su búsqueda.")
+
         # TAB 5: RESUMEN FINANCIERO DEL FONDO (Directo desde la pestaña 'admin' de Google Sheets)
         with tab_resumen_fondo:
             st.subheader("📈 Resumen General y Balance del Fondo FEDESO")
@@ -1430,9 +1434,6 @@ st.dataframe(
             df_admin_sheet = cargar_pestana("admin")
 
             if not df_admin_sheet.empty:
-                # SOLUCIÓN: Filtrar columnas duplicadas (incluyendo múltiples columnas vacías "")
-                df_admin_sheet = df_admin_sheet.loc[:, ~df_admin_sheet.columns.duplicated()]
-                
                 st.dataframe(df_admin_sheet, use_container_width=True, hide_index=True)
             else:
                 st.warning("⚠️ No se encontró información en la pestaña 'admin' de Google Sheets. Asegúrate de crear una pestaña llamada 'admin' en tu documento para visualizar y editar los datos.")
