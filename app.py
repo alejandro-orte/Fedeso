@@ -1454,9 +1454,8 @@ else:
 
             if not df_admin_sheet.empty:
                 # Eliminar columnas duplicadas para evitar el error de PyArrow
-df_admin_sheet = df_admin_sheet.loc[:, ~df_admin_sheet.columns.duplicated()]
-
-# Línea 1456 original
-st.dataframe(df_admin_sheet, use_container_width=True, hide_index=True)
+                df_admin_sheet = df_admin_sheet.loc[:, ~df_admin_sheet.columns.duplicated()]
+                # Línea 1456 original
+                st.dataframe(df_admin_sheet, use_container_width=True, hide_index=True)
             else:
                 st.warning("⚠️ No se encontró información en la pestaña 'admin' de Google Sheets. Asegúrate de crear una pestaña llamada 'admin' en tu documento para visualizar y editar los datos.")
