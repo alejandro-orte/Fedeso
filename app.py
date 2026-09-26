@@ -38,13 +38,16 @@ HEADERS_USUARIOS = ["usuario", "contrasena", "nombre", "rol"]
 HEADERS_RESUMEN = ["usuario", "monto", "plazo", "tasa_mv", "cuota"]
 HEADERS_AMORTIZACION = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
 HEADERS_COMPROBANTES = ["usuario", "nombre", "mes_cuota", "fecha_subida", "nombre_archivo", "tipo_archivo", "archivo_b64", "observaciones", "estado"]
+HEADERS_SOLICITUDES = ["usuario", "nombre", "linea_credito", "valor_solicitado", "numero_cuotas", "fecha_solicitud", "estado"]
 
 EXPECTED_HEADERS = {
     "Usuarios": HEADERS_USUARIOS,
     "Resumen": HEADERS_RESUMEN,
     "Amortizacion": HEADERS_AMORTIZACION,
-    "Comprobantes": HEADERS_COMPROBANTES
+    "Comprobantes": HEADERS_COMPROBANTES,
+    "Solicitudes": HEADERS_SOLICITUDES # Agregamos la nueva hoja al diccionario
 }
+
 
 # =========================================================
 # ESTILOS CSS
@@ -704,7 +707,36 @@ else:
         txt_dash = "▶️ 📊 Mi Estado de Cuenta" if st.session_state["pantalla"] == "dashboard" else "📊 Mi Estado de Cuenta"
         txt_subir = "▶️ 📩 Notificar Pago" if st.session_state["pantalla"] == "subir_comprobante" else "📩 Notificar Pago"
         txt_sim = "▶️ 🧮 Simulador de Crédito" if st.session_state["pantalla"] == "simulador" else "🧮 Simulador de Crédito"
+        # NUEVO BOTÓN
+        txt_sol = "▶️ 📝 Solicitud de Crédito" if st.session_state["pantalla"] == "solicitud" else "📝 Solicitud de Crédito"
         txt_adm = "▶️ 🛠️ Panel de Administración" if st.session_state["pantalla"] == "admin" else "🛠️ Panel de Administración"
+
+        if st.button(txt_dash, use_container_width=True, key="btn_dashboard"):
+            st.session_state["pantalla"] = "dashboard"
+            st.rerun()
+
+        if st.button(txt_subir, use_container_width=True, key="btn_subir_side"):
+            st.session_state["pantalla"] = "subir_comprobante"
+            st.rerun()
+
+        if st.button(txt_sim, use_container_width=True, key="btn_simulador"):
+            st.session_state["pantalla"] = "simulador"
+            st.rerun()
+            
+        # NUEVA LÓGICA DEL BOTÓN
+        if st.button(txt_sol, use_container_width=True, key="btn_solicitud"):
+            st.session_state["pantalla"] = "solicitud"
+            st.rerun()
+
+        if st.session_state["rol"] == "admin":
+            st.divider()
+            if st.button(txt_adm, use_container_width=True, key="btn_admin"):
+                st.session_state["pantalla"] = "admin"
+                st.rerun()
+
+        st.divider()
+        st.write("")
+        if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
 
         if st.button(txt_dash, use_container_width=True, key="btn_dashboard"):
             st.session_state["pantalla"] = "dashboard"
@@ -1130,7 +1162,80 @@ else:
             hide_index=True
         )
         st.write("")
-        st.link_button("📝 Solicitar este Crédito", FORM_URL, use_container_width=True)
+        if st.button("📝 Solicitar este Crédito", type="primary", use_container_width=True):
+            st.session_state["pantalla"] = "solicitud"
+            st.rerun()
+
+        # ---------------------------------------------------------
+    # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
+    # ---------------------------------------------------------
+    elif st.session_state["pantalla"] == "solicitud":
+        st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📝 Solicitud de Crédito</h3>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
+            <p style="color: #166534; font-size: 1.05rem; font-weight: 700; margin:0;">
+                📌 Complete el siguiente formulario para solicitar su crédito. Sus datos como asociado ({st.session_state['nombre']}) se adjuntarán automáticamente.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Reproducimos los campos de la imagen adjunta
+        with st.form("form_solicitar_credito"):
+            
+            st.markdown("#### Línea de Crédito *")
+            linea_credito = st.radio(
+                "Seleccione la línea de crédito",
+                ["Crédito Express", "Crédito Ordinario"],
+                label_visibility="collapsed"
+            )
+            
+            st.write("")
+            st.markdown("#### Valor solicitado *")
+            valor_solicitado = st.number_input(
+                "Ingrese el valor a solicitar ($)", 
+                min_value=0, 
+                step=100000, 
+                format="%d",
+                label_visibility="collapsed"
+            )
+            
+            st.write("")
+            st.markdown("#### Número de cuotas")
+            opciones_cuotas = [str(i) for i in range(1, 121)] # Opciones del 1 al 120
+            numero_cuotas = st.selectbox(
+                "Elegir", 
+                options=opciones_cuotas,
+                index=11, # Por defecto muestra 12 cuotas
+                label_visibility="collapsed"
+            )
+            
+            st.write("")
+            submit_solicitud = st.form_submit_button("📩 Enviar Solicitud de Crédito", use_container_width=True)
+
+            if submit_solicitud:
+                if valor_solicitado <= 0:
+                    st.error("El valor solicitado debe ser mayor a 0.")
+                else:
+                    with st.spinner("Enviando su solicitud al administrador..."):
+                        fecha_hoy_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                        usuario_key = normalizar_texto(pd.Series([st.session_state["usuario"]])).iloc[0]
+                        
+                        fila_sol = [
+                            usuario_key,
+                            st.session_state["nombre"],
+                            linea_credito,
+                            f"${valor_solicitado:,.0f}",
+                            numero_cuotas,
+                            fecha_hoy_str,
+                            "Pendiente"
+                        ]
+                        
+                        # Usamos la función existente para guardar en Sheets
+                        if agregar_fila_sheet("Solicitudes", fila_sol):
+                            st.success("✅ ¡Su solicitud de crédito ha sido enviada exitosamente! El administrador la revisará pronto.")
+                        else:
+                            st.error("No se pudo enviar la solicitud. Verifique la conexión con Google Sheets.")
 
     # ---------------------------------------------------------
     # 4. PANTALLA: PANEL DE ADMINISTRACIÓN
