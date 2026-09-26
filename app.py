@@ -1142,6 +1142,48 @@ else:
     # ---------------------------------------------------------
     # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
     # ---------------------------------------------------------
+    # ---------------------------------------------------------
+    # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
+    # ---------------------------------------------------------
+    elif st.session_state["pantalla"] == "solicitud":
+        st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📝 Solicitud de Crédito</h3>', unsafe_allow_html=True)
+        
+        # --- NUEVO BLOQUE DE INFORMACIÓN (Líneas y Condiciones) ---
+        st.markdown(f"""
+        <div class="card" style="background-color: #f8fafc; border-left: 5px solid #2563eb; margin-bottom: 20px;">
+            <div style="margin-bottom: 15px;">
+                <strong style="color: #1e3a8a; font-size: 1.05rem;">LÍNEAS DE CRÉDITO</strong><br>
+                <hr style="margin: 5px 0; border: none; border-top: 1px solid #cbd5e1; width: 30%;">
+                <ul style="margin-top: 5px; color: #334155; font-size: 0.95rem;">
+                    <li><strong>Crédito Express:</strong> Hasta por el 100% del valor ahorrado. No requiere codeudor.</li>
+                    <li><strong>Crédito Ordinario:</strong> Hasta dos veces el valor ahorrado, debe contar con un codeudor (obligatoriamente asociado).</li>
+                </ul>
+            </div>
+            <div>
+                <strong style="color: #1e3a8a; font-size: 1.05rem;">CONDICIONES</strong><br>
+                <hr style="margin: 5px 0; border: none; border-top: 1px solid #cbd5e1; width: 30%;">
+                <ul style="margin-top: 5px; color: #334155; font-size: 0.95rem;">
+                    <li>Plazo entre 6 a 24 meses.</li>
+                    <li>Registrar mínimo tres (3) meses de afiliación o reafiliación.</li>
+                    <li>Firma personal del Asociado.</li>
+                    <li>Tasa Efectiva Anual del 8,7%.</li>
+                    <li>Tasa Mes Vencido 0,7%.</li>
+                </ul>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
+            <p style="color: #166534; font-size: 1.05rem; font-weight: 700; margin:0;">
+                📌 Complete el siguiente formulario para solicitar su crédito. Sus datos como asociado ({st.session_state['nombre']}) se adjuntarán automáticamente.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("form_solicitar_credito"):
+            # ... el resto del código del formulario sigue igual desde aquí ...
+            st.markdown("#### Línea de Crédito *")
     elif st.session_state["pantalla"] == "solicitud":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📝 Solicitud de Crédito</h3>', unsafe_allow_html=True)
         
