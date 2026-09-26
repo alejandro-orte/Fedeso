@@ -23,7 +23,6 @@ st.set_page_config(
 # CONFIGURACIÓN Y CONSTANTES
 # =========================================================
 SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
-FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdBFMIqAXxKNis9O29AbqPheXlfZqUdsUlUolERBICgTwWEsw/viewform"
 
 TASA_MENSUAL_DEFAULT = 0.0069865  # 0.7% Mensual Vencido
 
@@ -45,9 +44,8 @@ EXPECTED_HEADERS = {
     "Resumen": HEADERS_RESUMEN,
     "Amortizacion": HEADERS_AMORTIZACION,
     "Comprobantes": HEADERS_COMPROBANTES,
-    "Solicitudes": HEADERS_SOLICITUDES # Agregamos la nueva hoja al diccionario
+    "Solicitudes": HEADERS_SOLICITUDES
 }
-
 
 # =========================================================
 # ESTILOS CSS
@@ -707,7 +705,6 @@ else:
         txt_dash = "▶️ 📊 Mi Estado de Cuenta" if st.session_state["pantalla"] == "dashboard" else "📊 Mi Estado de Cuenta"
         txt_subir = "▶️ 📩 Notificar Pago" if st.session_state["pantalla"] == "subir_comprobante" else "📩 Notificar Pago"
         txt_sim = "▶️ 🧮 Simulador de Crédito" if st.session_state["pantalla"] == "simulador" else "🧮 Simulador de Crédito"
-        # NUEVO BOTÓN
         txt_sol = "▶️ 📝 Solicitud de Crédito" if st.session_state["pantalla"] == "solicitud" else "📝 Solicitud de Crédito"
         txt_adm = "▶️ 🛠️ Panel de Administración" if st.session_state["pantalla"] == "admin" else "🛠️ Panel de Administración"
 
@@ -723,7 +720,6 @@ else:
             st.session_state["pantalla"] = "simulador"
             st.rerun()
             
-        # NUEVA LÓGICA DEL BOTÓN
         if st.button(txt_sol, use_container_width=True, key="btn_solicitud"):
             st.session_state["pantalla"] = "solicitud"
             st.rerun()
@@ -735,29 +731,6 @@ else:
                 st.rerun()
 
         st.divider()
-        st.write("")
-        if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
-
-        if st.button(txt_dash, use_container_width=True, key="btn_dashboard"):
-            st.session_state["pantalla"] = "dashboard"
-            st.rerun()
-
-        if st.button(txt_subir, use_container_width=True, key="btn_subir_side"):
-            st.session_state["pantalla"] = "subir_comprobante"
-            st.rerun()
-
-        if st.button(txt_sim, use_container_width=True, key="btn_simulador"):
-            st.session_state["pantalla"] = "simulador"
-            st.rerun()
-
-        if st.session_state["rol"] == "admin":
-            st.divider()
-            if st.button(txt_adm, use_container_width=True, key="btn_admin"):
-                st.session_state["pantalla"] = "admin"
-                st.rerun()
-
-        st.divider()
-        st.link_button("📝 Solicitud de Crédito", FORM_URL, use_container_width=True)
         st.write("")
         if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
             st.session_state["autenticado"] = False
@@ -1166,7 +1139,7 @@ else:
             st.session_state["pantalla"] = "solicitud"
             st.rerun()
 
-        # ---------------------------------------------------------
+    # ---------------------------------------------------------
     # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
     # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "solicitud":
@@ -1180,7 +1153,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        # Reproducimos los campos de la imagen adjunta
         with st.form("form_solicitar_credito"):
             
             st.markdown("#### Línea de Crédito *")
@@ -1202,11 +1174,11 @@ else:
             
             st.write("")
             st.markdown("#### Número de cuotas")
-            opciones_cuotas = [str(i) for i in range(1, 121)] # Opciones del 1 al 120
+            opciones_cuotas = [str(i) for i in range(1, 121)]
             numero_cuotas = st.selectbox(
                 "Elegir", 
                 options=opciones_cuotas,
-                index=11, # Por defecto muestra 12 cuotas
+                index=11,
                 label_visibility="collapsed"
             )
             
@@ -1231,7 +1203,6 @@ else:
                             "Pendiente"
                         ]
                         
-                        # Usamos la función existente para guardar en Sheets
                         if agregar_fila_sheet("Solicitudes", fila_sol):
                             st.success("✅ ¡Su solicitud de crédito ha sido enviada exitosamente! El administrador la revisará pronto.")
                         else:
