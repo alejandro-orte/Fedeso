@@ -1270,9 +1270,13 @@ else:
                         with col_c1:
                             num_cuota_sel = st.selectbox("Número de Cuota a Pagar:", opciones_cuota_num)
                             
-                            row_c = cuotas_pendientes[cuotas_pendientes["cuota_num_int"] == num_cuota_sel]
-                            val_int_def = limpiar_numero(row_c.iloc[0]["intereses"]) if not row_c.empty else 0.0
-                            val_cap_def = limpiar_numero(row_c.iloc[0]["capital"]) if not row_c.empty else 0.0
+                            val_int_def = 0.0
+                            val_cap_def = 0.0
+                            
+                            if num_cuota_sel is not None:
+                                row_c = cuotas_pendientes[cuotas_pendientes["cuota_num_int"] == num_cuota_sel]
+                                val_int_def = limpiar_numero(row_c.iloc[0]["intereses"]) if not row_c.empty else 0.0
+                                val_cap_def = limpiar_numero(row_c.iloc[0]["capital"]) if not row_c.empty else 0.0
 
                             interes_pagado_input = st.number_input("Intereses a Pagar ($)", value=float(val_int_def), step=1000.0)
                             capital_pagado_input = st.number_input("Abono a Capital Pagado ($)", value=float(val_cap_def), step=10000.0)
@@ -1291,25 +1295,28 @@ else:
                         btn_guardar_abono = st.form_submit_button("💾 Guardar Pago y Recalcular Crédito", use_container_width=True)
 
                         if btn_guardar_abono:
-                            with st.spinner("Recalculando plan de amortización en Google Sheets..."):
-                                if "Reducir Cuota" in tipo_efecto:
-                                    code_efecto = "reducir_cuota"
-                                elif "Reducir Plazo" in tipo_efecto:
-                                    code_efecto = "reducir_plazo"
-                                else:
-                                    code_efecto = "normal"
+                            if num_cuota_sel is None:
+                                st.error("⚠️ No hay cuotas pendientes para registrar a este usuario.")
+                            else:
+                                with st.spinner("Recalculando plan de amortización en Google Sheets..."):
+                                    if "Reducir Cuota" in tipo_efecto:
+                                        code_efecto = "reducir_cuota"
+                                    elif "Reducir Plazo" in tipo_efecto:
+                                        code_efecto = "reducir_plazo"
+                                    else:
+                                        code_efecto = "normal"
 
-                                ok = registrar_pago_con_recalculo(
-                                    user_c,
-                                    int(num_cuota_sel),
-                                    float(interes_pagado_input),
-                                    float(capital_pagado_input),
-                                    code_efecto
-                                )
+                                    ok = registrar_pago_con_recalculo(
+                                        user_c,
+                                        int(num_cuota_sel),
+                                        float(interes_pagado_input),
+                                        float(capital_pagado_input),
+                                        code_efecto
+                                    )
 
-                                if ok:
-                                    st.success(f"🎉 ¡Pago de Cuota #{num_cuota_sel} registrado y amortización recalculada exitosamente para **{user_c}**!")
-                                    st.rerun()
+                                    if ok:
+                                        st.success(f"🎉 ¡Pago de Cuota #{num_cuota_sel} registrado y amortización recalculada exitosamente para **{user_c}**!")
+                                        st.rerun()
 
         # TAB 4: VERIFICAR NOTIFICACIONES DE PAGO
         with tab_verif:
@@ -1375,31 +1382,43 @@ else:
                 if confirmados.empty:
                     st.info("Aún no hay pagos confirmados en el historial.")
                 else:
-                    # Filtros de búsqueda para el historial
-                    col1, col2, col3 = st.columns([2, 1, 1])
+                    # Filtros de búsqueda para el historial (Dinámicos y sin botón inútil)
+                    col1, col2 = st.columns([2, 1])
                     with col1:
                         buscar_texto = st.text_input("🔍 Buscar asociado o ID", placeholder="Ej. Luis Alejandro...")
                     with col2:
+                        # Value puede generar problemas en versiones viejas si no se maneja, Streamlit procesa tuples en rangos de fecha
                         fecha_notificacion = st.date_input("📅 Fecha de notificación", value=None)
-                    with col3:
-                        st.write("") 
-                        st.write("")
-                        btn_filtrar = st.button("Filtrar Historial", use_container_width=True)
 
                     # Lógica de filtrado
                     if buscar_texto:
-                        confirmados = confirmados[
-                            confirmados["nombre"].str.contains(buscar_texto, case=False, na=False) | 
-                            confirmados["usuario"].str.contains(buscar_texto, case=False, na=False)
-                        ]
+                        if "nombre" in confirmados.columns:
+                            confirmados = confirmados[
+                                confirmados["nombre"].str.contains(buscar_texto, case=False, na=False) | 
+                                confirmados["usuario"].str.contains(buscar_texto, case=False, na=False)
+                            ]
+                        else:
+                            confirmados = confirmados[
+                                confirmados["usuario"].str.contains(buscar_texto, case=False, na=False)
+                            ]
                     
                     if fecha_notificacion:
-                        fecha_str = fecha_notificacion.strftime("%Y-%m-%d")
-                        confirmados = confirmados[confirmados["fecha_subida"].str.contains(fecha_str, case=False, na=False)]
+                        # Control de seguridad por si Streamlit retorna una tupla (rango de fechas)
+                        if isinstance(fecha_notificacion, tuple) and len(fecha_notificacion) > 0:
+                            fecha_str = fecha_notificacion[0].strftime("%Y-%m-%d")
+                        elif not isinstance(fecha_notificacion, tuple):
+                            fecha_str = fecha_notificacion.strftime("%Y-%m-%d")
+                        else:
+                            fecha_str = ""
+                            
+                        if fecha_str:
+                            confirmados = confirmados[confirmados["fecha_subida"].str.contains(fecha_str, case=False, na=False)]
 
                     # Preparar los datos para mostrar en la tabla interactiva
                     if not confirmados.empty:
-                        df_mostrar = confirmados[["usuario", "nombre", "mes_cuota", "fecha_subida", "estado"]].rename(
+                        columnas_disponibles = [c for c in ["usuario", "nombre", "mes_cuota", "fecha_subida", "estado"] if c in confirmados.columns]
+                        
+                        df_mostrar = confirmados[columnas_disponibles].rename(
                             columns={
                                 "usuario": "ID / Cédula",
                                 "nombre": "Asociado",
