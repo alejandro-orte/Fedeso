@@ -1380,6 +1380,9 @@ else:
             df_admin_sheet = cargar_pestana("admin")
 
             if not df_admin_sheet.empty:
+                # SOLUCIÓN: Filtrar columnas duplicadas (incluyendo múltiples columnas vacías "")
+                df_admin_sheet = df_admin_sheet.loc[:, ~df_admin_sheet.columns.duplicated()]
+                
                 st.dataframe(df_admin_sheet, use_container_width=True, hide_index=True)
             else:
                 st.warning("⚠️ No se encontró información en la pestaña 'admin' de Google Sheets. Asegúrate de crear una pestaña llamada 'admin' en tu documento para visualizar y editar los datos.")
