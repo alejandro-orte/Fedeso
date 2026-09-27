@@ -1139,16 +1139,13 @@ else:
             st.session_state["pantalla"] = "solicitud"
             st.rerun()
 
-    # ---------------------------------------------------------
-    # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
-    # ---------------------------------------------------------
-    # ---------------------------------------------------------
+# ---------------------------------------------------------
     # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
     # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "solicitud":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📝 Solicitud de Crédito</h3>', unsafe_allow_html=True)
         
-        # --- NUEVO BLOQUE DE INFORMACIÓN (Líneas y Condiciones) ---
+        # --- BLOQUE DE INFORMACIÓN (Líneas y Condiciones) ---
         st.markdown(f"""
         <div class="card" style="background-color: #f8fafc; border-left: 5px solid #2563eb; margin-bottom: 20px;">
             <div style="margin-bottom: 15px;">
@@ -1173,20 +1170,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown(f"""
-        <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
-            <p style="color: #166534; font-size: 1.05rem; font-weight: 700; margin:0;">
-                📌 Complete el siguiente formulario para solicitar su crédito. Sus datos como asociado ({st.session_state['nombre']}) se adjuntarán automáticamente.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        with st.form("form_solicitar_credito"):
-            # ... el resto del código del formulario sigue igual desde aquí ...
-            st.markdown("#### Línea de Crédito *")
-    elif st.session_state["pantalla"] == "solicitud":
-        st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📝 Solicitud de Crédito</h3>', unsafe_allow_html=True)
-        
         st.markdown(f"""
         <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
             <p style="color: #166534; font-size: 1.05rem; font-weight: 700; margin:0;">
@@ -1249,6 +1232,7 @@ else:
                             st.success("✅ ¡Su solicitud de crédito ha sido enviada exitosamente! El administrador la revisará pronto.")
                         else:
                             st.error("No se pudo enviar la solicitud. Verifique la conexión con Google Sheets.")
+  
 
     # ---------------------------------------------------------
     # 4. PANTALLA: PANEL DE ADMINISTRACIÓN
