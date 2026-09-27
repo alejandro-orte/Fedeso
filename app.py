@@ -1154,6 +1154,7 @@ else:
                 <ul style="margin-top: 5px; color: #334155; font-size: 0.95rem;">
                     <li><strong>Crédito Express:</strong> Hasta por el 100% del valor ahorrado. No requiere codeudor.</li>
                     <li><strong>Crédito Ordinario:</strong> Hasta dos veces el valor ahorrado, debe contar con un codeudor (obligatoriamente asociado).</li>
+                    <li><strong>Retanqueo:</strong> Renovación o ampliación de un crédito vigente.</li>
                 </ul>
             </div>
             <div>
@@ -1183,7 +1184,7 @@ else:
             st.markdown("#### Línea de Crédito *")
             linea_credito = st.radio(
                 "Seleccione la línea de crédito",
-                ["Crédito Express", "Crédito Ordinario"],
+                ["Crédito Express", "Crédito Ordinario", "Retanqueo"],
                 label_visibility="collapsed"
             )
             
