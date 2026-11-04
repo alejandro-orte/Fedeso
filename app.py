@@ -169,21 +169,31 @@ st.markdown("""
 # =========================================================
 # CONEXIÓN A GOOGLE SHEETS
 # =========================================================
+class SinCredenciales(Exception):
+    pass
+
+@st.cache_resource(show_spinner=False)
+def _crear_cliente_gspread():
+    # Se cachea el cliente para no re-autenticar en cada interacción.
+    # Si falla, la excepción no se guarda en caché (se reintenta en la siguiente llamada).
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(credentials)
+    elif os.path.exists("service_account.json"):
+        credentials = Credentials.from_service_account_file("service_account.json", scopes=scopes)
+        return gspread.authorize(credentials)
+    raise SinCredenciales("No hay credenciales de Google Sheets configuradas.")
+
 def obtener_cliente_gspread():
     try:
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-            return gspread.authorize(credentials)
-        elif os.path.exists("service_account.json"):
-            credentials = Credentials.from_service_account_file("service_account.json", scopes=scopes)
-            return gspread.authorize(credentials)
-        else:
-            return None
+        return _crear_cliente_gspread()
+    except SinCredenciales:
+        return None
     except Exception as e:
         st.error(f"Error de autenticación en Google Sheets: {e}")
         return None
@@ -493,9 +503,15 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
 
         df_final = pd.concat([df_otros_clean, df_user_clean], ignore_index=True)
 
-        ws.clear()
+        # Escritura segura: primero se escriben los datos nuevos y luego se
+        # borran solo las filas sobrantes. Si algo falla a mitad, no se pierde
+        # toda la amortización (antes se hacía ws.clear() primero).
         val_matrix = [col_keys] + df_final.astype(str).values.tolist()
-        ws.update("A1", val_matrix)
+        filas_antes = len(data)
+        ws.update(range_name="A1", values=val_matrix)
+        filas_nuevas = len(val_matrix)
+        if filas_antes > filas_nuevas:
+            ws.batch_clear([f"A{filas_nuevas + 1}:Z{filas_antes}"])
         st.cache_data.clear()
         return True
 
@@ -546,6 +562,12 @@ def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
             return df
         except Exception as e:
             st.error(f"Error cargando pestaña '{nombre_pestana}' vía API: {e}")
+
+    if nombre_pestana == "Usuarios":
+        # Las contraseñas nunca se leen por el CSV público (gviz): si la hoja
+        # está compartida con enlace, cualquiera podría leerlas.
+        st.error("No se pudo leer la lista de usuarios: revise la conexión con Google Sheets.")
+        return pd.DataFrame()
 
     try:
         ts = int(time.time())
@@ -1200,11 +1222,12 @@ else:
             
             st.write("")
             st.markdown("#### Número de cuotas")
-            opciones_cuotas = [str(i) for i in range(1, 121)]
+            # Plazo según condiciones de la línea: 6 a 24 meses (12 cuotas por defecto)
+            opciones_cuotas = [str(i) for i in range(6, 25)]
             numero_cuotas = st.selectbox(
-                "Elegir", 
+                "Elegir",
                 options=opciones_cuotas,
-                index=11,
+                index=opciones_cuotas.index("12"),
                 label_visibility="collapsed"
             )
             
@@ -1368,19 +1391,25 @@ else:
                     cuotas_pendientes = df_amort_u[df_amort_u["cuota_num_int"] > 0].copy()
                     opciones_cuota_num = cuotas_pendientes["cuota_num_int"].tolist()
                     
+                    # El selector de cuota va FUERA del formulario: dentro de st.form
+                    # no se re-ejecuta al elegir otra cuota, y los montos por defecto
+                    # (intereses y capital) quedarían desactualizados.
+                    num_cuota_sel = st.selectbox(
+                        "Número de Cuota a Pagar:",
+                        opciones_cuota_num,
+                        key=f"cuota_sel_{user_c}"
+                    )
+
+                    val_int_def = 0.0
+                    val_cap_def = 0.0
+                    if num_cuota_sel is not None:
+                        row_c = cuotas_pendientes[cuotas_pendientes["cuota_num_int"] == num_cuota_sel]
+                        val_int_def = limpiar_numero(row_c.iloc[0]["intereses"]) if not row_c.empty else 0.0
+                        val_cap_def = limpiar_numero(row_c.iloc[0]["capital"]) if not row_c.empty else 0.0
+
                     with st.form("form_abono_recalculo"):
                         col_c1, col_c2 = st.columns(2)
                         with col_c1:
-                            num_cuota_sel = st.selectbox("Número de Cuota a Pagar:", opciones_cuota_num)
-                            
-                            val_int_def = 0.0
-                            val_cap_def = 0.0
-                            
-                            if num_cuota_sel is not None:
-                                row_c = cuotas_pendientes[cuotas_pendientes["cuota_num_int"] == num_cuota_sel]
-                                val_int_def = limpiar_numero(row_c.iloc[0]["intereses"]) if not row_c.empty else 0.0
-                                val_cap_def = limpiar_numero(row_c.iloc[0]["capital"]) if not row_c.empty else 0.0
-
                             interes_pagado_input = st.number_input("Intereses a Pagar ($)", value=float(val_int_def), step=1000.0)
                             capital_pagado_input = st.number_input("Abono a Capital Pagado ($)", value=float(val_cap_def), step=10000.0)
 
