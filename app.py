@@ -48,6 +48,12 @@ EXPECTED_HEADERS = {
 }
 
 # =========================================================
+# CONSTANTES DE FORMATO
+# =========================================================
+MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+ESTADOS_PAGADO = ["pagado", "pagada", "al dia", "al día"]
+
+# =========================================================
 # ESTILOS CSS
 # =========================================================
 st.markdown("""
@@ -198,61 +204,50 @@ def obtener_cliente_gspread():
         st.error(f"Error de autenticación en Google Sheets: {e}")
         return None
 
+def _asegurar_encabezados(worksheet, expected: list, vals: list):
+    """Garantiza que la pestaña tenga encabezados. `vals` son las filas ya leídas."""
+    if not expected:
+        return
+    if not vals:
+        worksheet.append_row(expected)
+    elif "usuario" in expected and "usuario" not in normalizar_encabezados(vals[0]):
+        worksheet.insert_row(expected, index=1)
+
 def agregar_fila_sheet(nombre_pestana: str, fila: list):
     gc = obtener_cliente_gspread()
-    if gc:
-        try:
-            sh = gc.open_by_key(SHEET_ID)
-            expected = EXPECTED_HEADERS.get(nombre_pestana, [])
-            try:
-                worksheet = sh.worksheet(nombre_pestana)
-            except Exception:
-                worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
-                if expected:
-                    worksheet.append_row(expected)
-            
-            vals = worksheet.get_all_values()
-            if not vals and expected:
-                worksheet.append_row(expected)
-            elif vals and expected:
-                primer_fila = [str(cell).replace('\xa0', '').strip().lower() for cell in vals[0]]
-                if "usuario" in expected and "usuario" not in primer_fila:
-                    worksheet.insert_row(expected, index=1)
-
-            worksheet.append_row(fila)
-            st.cache_data.clear()
-            return True
-        except Exception as e:
-            st.error(f"Error al guardar en Google Sheets: {e}")
-            return False
-    else:
+    if not gc:
         st.error("No se encontraron las credenciales de escritura en Google Sheets.")
+        return False
+    try:
+        sh = gc.open_by_key(SHEET_ID)
+        expected = EXPECTED_HEADERS.get(nombre_pestana, [])
+        try:
+            worksheet = sh.worksheet(nombre_pestana)
+        except Exception:
+            worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
+        _asegurar_encabezados(worksheet, expected, worksheet.get_all_values())
+        worksheet.append_row(fila)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar en Google Sheets: {e}")
         return False
 
 def agregar_filas_sheet(nombre_pestana: str, filas: list):
     gc = obtener_cliente_gspread()
-    if gc:
-        try:
-            sh = gc.open_by_key(SHEET_ID)
-            expected = EXPECTED_HEADERS.get(nombre_pestana, [])
-            worksheet = sh.worksheet(nombre_pestana)
-
-            vals = worksheet.get_all_values()
-            if not vals and expected:
-                worksheet.append_row(expected)
-            elif vals and expected:
-                primer_fila = [str(cell).replace('\xa0', '').strip().lower() for cell in vals[0]]
-                if "usuario" in expected and "usuario" not in primer_fila:
-                    worksheet.insert_row(expected, index=1)
-
-            worksheet.append_rows(filas)
-            st.cache_data.clear()
-            return True
-        except Exception as e:
-            st.error(f"Error en inserción masiva: {e}")
-            return False
-    else:
+    if not gc:
         st.error("Sin credenciales de escritura.")
+        return False
+    try:
+        sh = gc.open_by_key(SHEET_ID)
+        expected = EXPECTED_HEADERS.get(nombre_pestana, [])
+        worksheet = sh.worksheet(nombre_pestana)
+        _asegurar_encabezados(worksheet, expected, worksheet.get_all_values())
+        worksheet.append_rows(filas)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error en inserción masiva: {e}")
         return False
 
 def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo_estado: str = "Pagado"):
@@ -265,11 +260,11 @@ def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo
             if not data:
                 return False
             
-            headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            headers = normalizar_encabezados(data[0])
             if "usuario" not in headers:
                 ws.insert_row(HEADERS_AMORTIZACION, index=1)
                 data = ws.get_all_values()
-                headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+                headers = normalizar_encabezados(data[0])
 
             col_user = headers.index("usuario") if "usuario" in headers else 0
             col_cuota = headers.index("cuota_num") if "cuota_num" in headers else 1
@@ -306,11 +301,11 @@ def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: st
             if not data:
                 return False
 
-            headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            headers = normalizar_encabezados(data[0])
             if "usuario" not in headers:
                 ws.insert_row(HEADERS_COMPROBANTES, index=1)
                 data = ws.get_all_values()
-                headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+                headers = normalizar_encabezados(data[0])
 
             col_user = headers.index("usuario") if "usuario" in headers else 0
             col_mes = headers.index("mes_cuota") if "mes_cuota" in headers else 2
@@ -341,11 +336,11 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
         if not data:
             return False
 
-        headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+        headers = normalizar_encabezados(data[0])
         if "usuario" not in headers:
             ws.insert_row(HEADERS_AMORTIZACION, index=1)
             data = ws.get_all_values()
-            headers = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
+            headers = normalizar_encabezados(data[0])
 
         df_all = pd.DataFrame(data[1:], columns=headers)
         df_all["usuario_clean"] = normalizar_texto(df_all["usuario"])
@@ -397,7 +392,7 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
         else:
             fecha_ref = dt.now().date()
 
-        meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+        meses_cortos = MESES_CORTOS
 
         if saldo_actual > 0:
             meses_restantes = max_cuota_orig - num_cuota_pagar
@@ -499,7 +494,7 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
 
         col_keys = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
         df_otros_clean = df_otros[col_keys].copy() if not df_otros.empty else pd.DataFrame(columns=col_keys)
-        df_user_clean = pd.DataFrame(nuevas_filas_user)[col_keys]
+        df_user_clean = pd.DataFrame(nuevas_filas_user, columns=col_keys)
 
         df_final = pd.concat([df_otros_clean, df_user_clean], ignore_index=True)
 
@@ -521,51 +516,36 @@ def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pag
 
 @st.cache_data(ttl=1, show_spinner=False)
 def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
+    """Lee una pestaña como DataFrame. Solo lectura: no crea pestañas ni modifica la hoja."""
     gc = obtener_cliente_gspread()
     expected = EXPECTED_HEADERS.get(nombre_pestana, [])
-    
+
     if gc:
         try:
             sh = gc.open_by_key(SHEET_ID)
             try:
                 worksheet = sh.worksheet(nombre_pestana)
             except Exception:
-                if expected:
-                    worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
-                    worksheet.append_row(expected)
-                    return pd.DataFrame(columns=expected)
-                return pd.DataFrame()
+                return pd.DataFrame(columns=expected)
 
             data = worksheet.get_all_values()
             if not data:
-                if expected:
-                    worksheet.append_row(expected)
-                    return pd.DataFrame(columns=expected)
-                return pd.DataFrame()
+                return pd.DataFrame(columns=expected)
 
-            first_row = [str(h).replace('\xa0', '').strip().lower() for h in data[0]]
-
-            if expected and "usuario" in expected and "usuario" not in first_row:
-                try:
-                    worksheet.insert_row(expected, index=1)
-                except Exception:
-                    pass
-                headers = expected
-                df = pd.DataFrame(data, columns=headers[:len(data[0])])
-            else:
-                headers = first_row
-                if len(data) > 1:
-                    df = pd.DataFrame(data[1:], columns=headers)
-                else:
-                    df = pd.DataFrame(columns=headers)
-
-            return df
+            primera_fila = normalizar_encabezados(data[0])
+            if expected and "usuario" in expected and "usuario" not in primera_fila:
+                # Formato antiguo sin encabezado: la primera fila son datos.
+                # No se modifica la hoja; la próxima escritura insertará el encabezado.
+                return pd.DataFrame(data, columns=expected[:len(data[0])])
+            if len(data) > 1:
+                return pd.DataFrame(data[1:], columns=primera_fila)
+            return pd.DataFrame(columns=primera_fila)
         except Exception as e:
             st.error(f"Error cargando pestaña '{nombre_pestana}' vía API: {e}")
 
+    # Las contraseñas nunca se leen por el CSV público (gviz): si la hoja
+    # está compartida con enlace, cualquiera podría leerlas.
     if nombre_pestana == "Usuarios":
-        # Las contraseñas nunca se leen por el CSV público (gviz): si la hoja
-        # está compartida con enlace, cualquiera podría leerlas.
         st.error("No se pudo leer la lista de usuarios: revise la conexión con Google Sheets.")
         return pd.DataFrame()
 
@@ -640,6 +620,36 @@ def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
         .str.strip()
     )
     return res.str.lower() if minusculas else res
+
+# =========================================================
+# HELPERS REUTILIZABLES
+# =========================================================
+def normalizar_encabezados(fila) -> list:
+    """Encabezados en minúsculas, sin espacios sobrantes ni espacios no separables."""
+    return [str(c).replace('\xa0', '').strip().lower() for c in fila]
+
+def normalizar_clave(valor) -> str:
+    """Normaliza un identificador de usuario (cédula) para compararlo."""
+    return normalizar_texto(pd.Series([valor])).iloc[0]
+
+def calcular_cuota(P, i, n):
+    """Cuota fija mensual (sistema francés). i = tasa mensual, n = número de cuotas."""
+    n = max(1, int(n))
+    if i > 0:
+        factor = (1 + i) ** n
+        return P * (i * factor) / (factor - 1)
+    return P / n
+
+def formato_estado_badge(val):
+    """Etiqueta visual para el estado de una cuota en el plan de pagos."""
+    val_str = str(val).lower()
+    if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
+        return "🟢 Pagado"
+    elif "mora" in val_str or "atras" in val_str:
+        return "🔴 En Mora"
+    elif "pendiente" in val_str or "curso" in val_str:
+        return "🟡 Pendiente"
+    return val
 
 # =========================================================
 # CONTROL DE SESIÓN
@@ -782,7 +792,7 @@ else:
     # ---------------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
-        usuario_key = normalizar_texto(pd.Series([st.session_state["usuario"]])).iloc[0]
+        usuario_key = normalizar_clave(st.session_state["usuario"])
 
         col_btn_dash, _ = st.columns([1.5, 1])
         with col_btn_dash:
@@ -827,10 +837,10 @@ else:
                     total_cuotas = len(amort_cuotas)
 
                     estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
-                    cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
+                    cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(ESTADOS_PAGADO)]
                     num_pagadas = len(cuotas_pagadas_df)
 
-                    proxima_cuota = amort_cuotas[~estados_limpios.isin(["pagado", "pagada", "al dia", "al día"])]
+                    proxima_cuota = amort_cuotas[~estados_limpios.isin(ESTADOS_PAGADO)]
                     
                     if not proxima_cuota.empty:
                         mes_proximo = proxima_cuota.iloc[0].get("mes_año", "N/A")
@@ -970,16 +980,6 @@ else:
                     }
                     tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
 
-                    def formato_estado_badge(val):
-                        val_str = str(val).lower()
-                        if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
-                            return "🟢 Pagado"
-                        elif "mora" in val_str or "atras" in val_str:
-                            return "🔴 En Mora"
-                        elif "pendiente" in val_str or "curso" in val_str:
-                            return "🟡 Pendiente"
-                        return val
-
                     if "Estado de Pago" in tabla_mostrar.columns:
                         tabla_mostrar["Estado de Pago"] = tabla_mostrar["Estado de Pago"].apply(formato_estado_badge)
 
@@ -1002,7 +1002,7 @@ else:
     # ---------------------------------------------------------
     elif st.session_state["pantalla"] == "subir_comprobante":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📩 Notificar Pago Realizado</h3>', unsafe_allow_html=True)
-        usuario_key = normalizar_texto(pd.Series([st.session_state["usuario"]])).iloc[0]
+        usuario_key = normalizar_clave(st.session_state["usuario"])
         
         df_amort = cargar_pestana("Amortizacion")
         opciones_cuotas = []
@@ -1051,9 +1051,7 @@ else:
                         "Pendiente"
                     ]
                     
-                    st.cache_data.clear()
                     if agregar_fila_sheet("Comprobantes", fila_comp):
-                        st.cache_data.clear()
                         st.success("✅ ¡Notificación de pago enviada correctamente! El administrador la verificará y actualizará la cuota.")
                     else:
                         st.error("No se pudo enviar la notificación. Verifique la conexión con Google Sheets.")
@@ -1085,11 +1083,7 @@ else:
         n = int(plazo_sim)
         P = float(monto_sim)
 
-        if i > 0:
-            factor = (1 + i)**n
-            cuota_exacta = P * (i * factor) / (factor - 1)
-        else:
-            cuota_exacta = P / n
+        cuota_exacta = calcular_cuota(P, i, n)
 
         cuota_sim = round(cuota_exacta)
         fecha_inicio = dt.now()
@@ -1240,7 +1234,7 @@ else:
                 else:
                     with st.spinner("Enviando su solicitud al administrador..."):
                         fecha_hoy_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                        usuario_key = normalizar_texto(pd.Series([st.session_state["usuario"]])).iloc[0]
+                        usuario_key = normalizar_clave(st.session_state["usuario"])
                         
                         fila_sol = [
                             usuario_key,
@@ -1311,11 +1305,7 @@ else:
                 n_p = int(plazo_p)
                 P_p = float(monto_p)
                 
-                if i_p > 0 and n_p > 0:
-                    factor_p = (1 + i_p)**n_p
-                    cuota_calc = round(P_p * (i_p * factor_p) / (factor_p - 1))
-                else:
-                    cuota_calc = round(P_p / max(1, n_p))
+                cuota_calc = round(calcular_cuota(P_p, i_p, n_p)) if n_p > 0 else round(P_p)
 
                 st.info(f"Cuota mensual calculada: **${cuota_calc:,.0f}** | Se generarán **{n_p + 1} filas** (Cuota 0 de desembolso + {n_p} cuotas).")
 
@@ -1333,7 +1323,7 @@ else:
                             ])
 
                             fecha_base = datetime.date(fecha_inicio_p.year, fecha_inicio_p.month, 1)
-                            meses_cortos = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+                            meses_cortos = MESES_CORTOS
 
                             saldo_acc = P_p
                             for idx_c in range(1, n_p + 1):
