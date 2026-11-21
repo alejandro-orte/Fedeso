@@ -1,13 +1,13 @@
-import streamlit as st
-import pandas as pd
 import base64
 import os
-import datetime
-import time
-from datetime import datetime as dt
-from dateutil.relativedelta import relativedelta
-import gspread
-from google.oauth2.service_account import Credentials
+from datetime import date
+
+import pandas as pd
+import streamlit as st
+
+import db
+import logica as L
+from seguridad import hash_password, verificar_password
 
 # =========================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -16,66 +16,27 @@ st.set_page_config(
     page_title="FEDESO - Fondo Empresarial de Solidaridad",
     page_icon="💰",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# =========================================================
-# CONFIGURACIÓN Y CONSTANTES
-# =========================================================
-SHEET_ID = "12A0vnk-mUz2PaQpBmXnOPWtjzvOr7CXpUHLMn9ioLNQ"
-
-TASA_MENSUAL_DEFAULT = 0.0069865  # 0.7% Mensual Vencido
-
-MESES_MAP = {
-    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
-    "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12,
-    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
-    "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
-}
-
-HEADERS_USUARIOS = ["usuario", "contrasena", "nombre", "rol"]
-HEADERS_RESUMEN = ["usuario", "monto", "plazo", "tasa_mv", "cuota"]
-HEADERS_AMORTIZACION = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
-HEADERS_COMPROBANTES = ["usuario", "nombre", "mes_cuota", "fecha_subida", "nombre_archivo", "tipo_archivo", "archivo_b64", "observaciones", "estado"]
-HEADERS_SOLICITUDES = ["usuario", "nombre", "linea_credito", "valor_solicitado", "numero_cuotas", "fecha_solicitud", "estado"]
-
-EXPECTED_HEADERS = {
-    "Usuarios": HEADERS_USUARIOS,
-    "Resumen": HEADERS_RESUMEN,
-    "Amortizacion": HEADERS_AMORTIZACION,
-    "Comprobantes": HEADERS_COMPROBANTES,
-    "Solicitudes": HEADERS_SOLICITUDES
-}
-
-# =========================================================
-# CONSTANTES DE FORMATO
-# =========================================================
-MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
-ESTADOS_PAGADO = ["pagado", "pagada", "al dia", "al día"]
+LINEAS_CREDITO = ["Crédito Express", "Crédito Ordinario", "Retanqueo"]
+ESTADOS_SOLICITUD = ["Pendiente", "Aprobado", "Rechazado"]
 
 # =========================================================
 # ESTILOS CSS
 # =========================================================
 st.markdown("""
 <style>
-    header[data-testid="stHeader"], 
+    header[data-testid="stHeader"],
     [data-testid="stHeaderToolbar"],
     [data-testid="stToolbar"],
     [data-testid="stDecoration"] {
         display: none !important;
         visibility: hidden !important;
     }
-    #MainMenu {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    footer {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    [data-testid="stElementToolbar"] {
-        display: none !important;
-    }
+    #MainMenu { display: none !important; visibility: hidden !important; }
+    footer { display: none !important; visibility: hidden !important; }
+    [data-testid="stElementToolbar"] { display: none !important; }
     [data-testid="stSidebar"] {
         width: 340px !important;
         background-color: #f8fafc !important;
@@ -117,10 +78,7 @@ st.markdown("""
         margin-bottom: 22px;
         border: 1px solid #e5e7eb;
     }
-    .metric-container {
-        display: flex;
-        flex-direction: column;
-    }
+    .metric-container { display: flex; flex-direction: column; }
     .metric-label {
         font-size: 0.85rem;
         color: #6b7280;
@@ -129,37 +87,22 @@ st.markdown("""
         letter-spacing: 0.05em;
         margin-bottom: 4px;
     }
-    .metric-value {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: #111827;
-    }
+    .metric-value { font-size: 1.35rem; font-weight: 800; color: #111827; }
     .status-tag-green {
-        display: inline-block;
-        background-color: #dcfce7;
-        color: #15803d;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 0.90rem;
-        font-weight: 800;
+        display: inline-block; background-color: #dcfce7; color: #15803d;
+        padding: 6px 14px; border-radius: 20px; font-size: 0.90rem; font-weight: 800;
     }
     .status-tag-yellow {
-        display: inline-block;
-        background-color: #fef3c7;
-        color: #b45309;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 0.90rem;
-        font-weight: 800;
+        display: inline-block; background-color: #fef3c7; color: #b45309;
+        padding: 6px 14px; border-radius: 20px; font-size: 0.90rem; font-weight: 800;
     }
     .status-tag-red {
-        display: inline-block;
-        background-color: #fee2e2;
-        color: #b91c1c;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-size: 0.90rem;
-        font-weight: 800;
+        display: inline-block; background-color: #fee2e2; color: #b91c1c;
+        padding: 6px 14px; border-radius: 20px; font-size: 0.90rem; font-weight: 800;
+    }
+    .status-tag-gray {
+        display: inline-block; background-color: #e5e7eb; color: #374151;
+        padding: 6px 14px; border-radius: 20px; font-size: 0.90rem; font-weight: 800;
     }
     .header-box {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
@@ -172,484 +115,47 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# CONEXIÓN A GOOGLE SHEETS
-# =========================================================
-class SinCredenciales(Exception):
-    pass
-
-@st.cache_resource(show_spinner=False)
-def _crear_cliente_gspread():
-    # Se cachea el cliente para no re-autenticar en cada interacción.
-    # Si falla, la excepción no se guarda en caché (se reintenta en la siguiente llamada).
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(credentials)
-    elif os.path.exists("service_account.json"):
-        credentials = Credentials.from_service_account_file("service_account.json", scopes=scopes)
-        return gspread.authorize(credentials)
-    raise SinCredenciales("No hay credenciales de Google Sheets configuradas.")
-
-def obtener_cliente_gspread():
-    try:
-        return _crear_cliente_gspread()
-    except SinCredenciales:
-        return None
-    except Exception as e:
-        st.error(f"Error de autenticación en Google Sheets: {e}")
-        return None
-
-def _asegurar_encabezados(worksheet, expected: list, vals: list):
-    """Garantiza que la pestaña tenga encabezados. `vals` son las filas ya leídas."""
-    if not expected:
-        return
-    if not vals:
-        worksheet.append_row(expected)
-    elif "usuario" in expected and "usuario" not in normalizar_encabezados(vals[0]):
-        worksheet.insert_row(expected, index=1)
-
-def agregar_fila_sheet(nombre_pestana: str, fila: list):
-    gc = obtener_cliente_gspread()
-    if not gc:
-        st.error("No se encontraron las credenciales de escritura en Google Sheets.")
-        return False
-    try:
-        sh = gc.open_by_key(SHEET_ID)
-        expected = EXPECTED_HEADERS.get(nombre_pestana, [])
-        try:
-            worksheet = sh.worksheet(nombre_pestana)
-        except Exception:
-            worksheet = sh.add_worksheet(title=nombre_pestana, rows=1000, cols=10)
-        _asegurar_encabezados(worksheet, expected, worksheet.get_all_values())
-        worksheet.append_row(fila)
-        st.cache_data.clear()
-        return True
-    except Exception as e:
-        st.error(f"Error al guardar en Google Sheets: {e}")
-        return False
-
-def agregar_filas_sheet(nombre_pestana: str, filas: list):
-    gc = obtener_cliente_gspread()
-    if not gc:
-        st.error("Sin credenciales de escritura.")
-        return False
-    try:
-        sh = gc.open_by_key(SHEET_ID)
-        expected = EXPECTED_HEADERS.get(nombre_pestana, [])
-        worksheet = sh.worksheet(nombre_pestana)
-        _asegurar_encabezados(worksheet, expected, worksheet.get_all_values())
-        worksheet.append_rows(filas)
-        st.cache_data.clear()
-        return True
-    except Exception as e:
-        st.error(f"Error en inserción masiva: {e}")
-        return False
-
-def actualizar_estado_amortizacion(usuario: str, identificador_cuota: str, nuevo_estado: str = "Pagado"):
-    gc = obtener_cliente_gspread()
-    if gc:
-        try:
-            sh = gc.open_by_key(SHEET_ID)
-            ws = sh.worksheet("Amortizacion")
-            data = ws.get_all_values()
-            if not data:
-                return False
-            
-            headers = normalizar_encabezados(data[0])
-            if "usuario" not in headers:
-                ws.insert_row(HEADERS_AMORTIZACION, index=1)
-                data = ws.get_all_values()
-                headers = normalizar_encabezados(data[0])
-
-            col_user = headers.index("usuario") if "usuario" in headers else 0
-            col_cuota = headers.index("cuota_num") if "cuota_num" in headers else 1
-            col_mes = headers.index("mes_año") if "mes_año" in headers else 2
-            col_estado = headers.index("estado") if "estado" in headers else len(headers) - 1
-
-            target = str(identificador_cuota).strip().lower()
-
-            for idx, row in enumerate(data[1:], start=2):
-                u = str(row[col_user]).strip().lower()
-                c = str(row[col_cuota]).strip().lower()
-                m = str(row[col_mes]).strip().lower()
-                
-                if u == str(usuario).strip().lower():
-                    coincide_cuota = (len(c) > 0 and (f"cuota #{c} " in target or f"cuota #{c}(" in target or target == c))
-                    coincide_mes = (len(m) > 0 and m in target)
-                    
-                    if coincide_cuota or coincide_mes:
-                        ws.update_cell(idx, col_estado + 1, nuevo_estado)
-                        st.cache_data.clear()
-                        return True
-        except Exception as e:
-            st.error(f"Error al actualizar la amortización: {e}")
-            return False
-    return False
-
-def actualizar_estado_comprobante(usuario: str, mes_cuota: str, nuevo_estado: str = "Aprobado"):
-    gc = obtener_cliente_gspread()
-    if gc:
-        try:
-            sh = gc.open_by_key(SHEET_ID)
-            ws = sh.worksheet("Comprobantes")
-            data = ws.get_all_values()
-            if not data:
-                return False
-
-            headers = normalizar_encabezados(data[0])
-            if "usuario" not in headers:
-                ws.insert_row(HEADERS_COMPROBANTES, index=1)
-                data = ws.get_all_values()
-                headers = normalizar_encabezados(data[0])
-
-            col_user = headers.index("usuario") if "usuario" in headers else 0
-            col_mes = headers.index("mes_cuota") if "mes_cuota" in headers else 2
-            col_estado = headers.index("estado") if "estado" in headers else len(headers) - 1
-
-            for idx, row in enumerate(data[1:], start=2):
-                u = str(row[col_user]).strip().lower()
-                m = str(row[col_mes]).strip().lower()
-                if u == str(usuario).strip().lower() and m == str(mes_cuota).strip().lower():
-                    ws.update_cell(idx, col_estado + 1, nuevo_estado)
-                    st.cache_data.clear()
-                    return True
-        except Exception as e:
-            st.error(f"Error al actualizar la notificación: {e}")
-            return False
-    return False
-
-def registrar_pago_con_recalculo(usuario: str, num_cuota_pagar: int, interes_pagado: float, capital_pagado: float, tipo_recalculo: str):
-    gc = obtener_cliente_gspread()
-    if not gc:
-        st.error("No se pudo conectar a Google Sheets.")
-        return False
-
-    try:
-        sh = gc.open_by_key(SHEET_ID)
-        ws = sh.worksheet("Amortizacion")
-        data = ws.get_all_values()
-        if not data:
-            return False
-
-        headers = normalizar_encabezados(data[0])
-        if "usuario" not in headers:
-            ws.insert_row(HEADERS_AMORTIZACION, index=1)
-            data = ws.get_all_values()
-            headers = normalizar_encabezados(data[0])
-
-        df_all = pd.DataFrame(data[1:], columns=headers)
-        df_all["usuario_clean"] = normalizar_texto(df_all["usuario"])
-        user_clean = str(usuario).strip().lower()
-
-        df_otros = df_all[df_all["usuario_clean"] != user_clean].copy()
-        df_user = df_all[df_all["usuario_clean"] == user_clean].copy()
-
-        if df_user.empty:
-            st.error("No se encontraron registros de amortización para este usuario.")
-            return False
-
-        df_user["cuota_num_int"] = df_user["cuota_num"].apply(lambda x: int(limpiar_numero(x)))
-        df_user = df_user.sort_values("cuota_num_int").reset_index(drop=True)
-
-        i = TASA_MENSUAL_DEFAULT
-        nuevas_filas_user = []
-        max_cuota_orig = df_user["cuota_num_int"].max()
-
-        cuota_0 = df_user[df_user["cuota_num_int"] == 0]
-        if not cuota_0.empty:
-            saldo_actual = limpiar_numero(cuota_0.iloc[0]["saldo"])
-            nuevas_filas_user.append(cuota_0.iloc[0].to_dict())
-        else:
-            saldo_actual = 0.0
-
-        for idx, row in df_user.iterrows():
-            c_num = row["cuota_num_int"]
-            if c_num == 0:
-                continue
-
-            if c_num < num_cuota_pagar:
-                nuevas_filas_user.append(row.to_dict())
-                saldo_actual = limpiar_numero(row["saldo"])
-            elif c_num == num_cuota_pagar:
-                nuevo_saldo = max(0.0, saldo_actual - capital_pagado)
-                row_dict = row.to_dict()
-                row_dict["intereses"] = f"${interes_pagado:,.0f}"
-                row_dict["capital"] = f"${capital_pagado:,.0f}"
-                row_dict["saldo"] = f"${nuevo_saldo:,.0f}"
-                row_dict["estado"] = "Pagado"
-                nuevas_filas_user.append(row_dict)
-                saldo_actual = nuevo_saldo
-                break
-
-        row_pagada = df_user[df_user["cuota_num_int"] == num_cuota_pagar]
-        if not row_pagada.empty:
-            fecha_ref = parsear_fecha_flexible(row_pagada.iloc[0]["mes_año"]) or dt.now().date()
-        else:
-            fecha_ref = dt.now().date()
-
-        meses_cortos = MESES_CORTOS
-
-        if saldo_actual > 0:
-            meses_restantes = max_cuota_orig - num_cuota_pagar
-
-            if tipo_recalculo == "reducir_cuota" and meses_restantes > 0:
-                if i > 0:
-                    factor = (1 + i)**meses_restantes
-                    nueva_cuota_fija = round(saldo_actual * (i * factor) / (factor - 1))
-                else:
-                    nueva_cuota_fija = round(saldo_actual / max(1, meses_restantes))
-
-                c_num_next = num_cuota_pagar + 1
-                for idx_m in range(1, meses_restantes + 1):
-                    f_m = fecha_ref + relativedelta(months=idx_m)
-                    mes_txt = f"{meses_cortos[f_m.month - 1]}-{str(f_m.year)[2:]}"
-                    int_m = round(saldo_actual * i)
-                    
-                    if idx_m == meses_restantes:
-                        cap_m = round(saldo_actual)
-                        saldo_actual = 0.0
-                    else:
-                        cap_m = nueva_cuota_fija - int_m
-                        saldo_actual -= cap_m
-
-                    nuevas_filas_user.append({
-                        "usuario": usuario,
-                        "cuota_num": str(c_num_next),
-                        "mes_año": mes_txt,
-                        "intereses": f"${int_m:,.0f}",
-                        "capital": f"${cap_m:,.0f}",
-                        "saldo": f"${max(0.0, saldo_actual):,.0f}",
-                        "estado": "Pendiente"
-                    })
-                    c_num_next += 1
-
-            elif tipo_recalculo == "reducir_plazo":
-                cuota_reg_anterior = 0.0
-                row_f1 = df_user[df_user["cuota_num_int"] == 1]
-                if not row_f1.empty:
-                    cuota_reg_anterior = limpiar_numero(row_f1.iloc[0]["intereses"]) + limpiar_numero(row_f1.iloc[0]["capital"])
-                if cuota_reg_anterior <= 0:
-                    cuota_reg_anterior = (saldo_actual * i) + 100000
-
-                c_num_next = num_cuota_pagar + 1
-                idx_m = 1
-                while saldo_actual > 0 and idx_m <= 120:
-                    f_m = fecha_ref + relativedelta(months=idx_m)
-                    mes_txt = f"{meses_cortos[f_m.month - 1]}-{str(f_m.year)[2:]}"
-                    int_m = round(saldo_actual * i)
-                    cap_m = cuota_reg_anterior - int_m
-
-                    if cap_m >= saldo_actual or idx_m == 120:
-                        cap_m = round(saldo_actual)
-                        saldo_actual = 0.0
-                    else:
-                        saldo_actual -= cap_m
-
-                    nuevas_filas_user.append({
-                        "usuario": usuario,
-                        "cuota_num": str(c_num_next),
-                        "mes_año": mes_txt,
-                        "intereses": f"${int_m:,.0f}",
-                        "capital": f"${cap_m:,.0f}",
-                        "saldo": f"${max(0.0, saldo_actual):,.0f}",
-                        "estado": "Pendiente"
-                    })
-                    c_num_next += 1
-                    idx_m += 1
-
-            else:
-                cuotas_orig_restantes = df_user[df_user["cuota_num_int"] > num_cuota_pagar]
-                c_num_next = num_cuota_pagar + 1
-                idx_m = 1
-                tot_restantes = len(cuotas_orig_restantes)
-                
-                for _, row_orig in cuotas_orig_restantes.iterrows():
-                    mes_txt = row_orig["mes_año"]
-                    int_m = round(saldo_actual * i)
-                    cap_orig = limpiar_numero(row_orig["capital"])
-
-                    if cap_orig >= saldo_actual or idx_m == tot_restantes:
-                        cap_m = round(saldo_actual)
-                        saldo_actual = 0.0
-                    else:
-                        cap_m = cap_orig
-                        saldo_actual -= cap_m
-
-                    nuevas_filas_user.append({
-                        "usuario": usuario,
-                        "cuota_num": str(c_num_next),
-                        "mes_año": mes_txt,
-                        "intereses": f"${int_m:,.0f}",
-                        "capital": f"${cap_m:,.0f}",
-                        "saldo": f"${max(0.0, saldo_actual):,.0f}",
-                        "estado": row_orig.get("estado", "Pendiente")
-                    })
-                    c_num_next += 1
-                    idx_m += 1
-
-        col_keys = ["usuario", "cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"]
-        df_otros_clean = df_otros[col_keys].copy() if not df_otros.empty else pd.DataFrame(columns=col_keys)
-        df_user_clean = pd.DataFrame(nuevas_filas_user, columns=col_keys)
-
-        df_final = pd.concat([df_otros_clean, df_user_clean], ignore_index=True)
-
-        # Escritura segura: primero se escriben los datos nuevos y luego se
-        # borran solo las filas sobrantes. Si algo falla a mitad, no se pierde
-        # toda la amortización (antes se hacía ws.clear() primero).
-        val_matrix = [col_keys] + df_final.astype(str).values.tolist()
-        filas_antes = len(data)
-        ws.update(range_name="A1", values=val_matrix)
-        filas_nuevas = len(val_matrix)
-        if filas_antes > filas_nuevas:
-            ws.batch_clear([f"A{filas_nuevas + 1}:Z{filas_antes}"])
-        st.cache_data.clear()
-        return True
-
-    except Exception as e:
-        st.error(f"Error al recalcular la amortización: {e}")
-        return False
-
-@st.cache_data(ttl=1, show_spinner=False)
-def cargar_pestana(nombre_pestana: str) -> pd.DataFrame:
-    """Lee una pestaña como DataFrame. Solo lectura: no crea pestañas ni modifica la hoja."""
-    gc = obtener_cliente_gspread()
-    expected = EXPECTED_HEADERS.get(nombre_pestana, [])
-
-    if gc:
-        try:
-            sh = gc.open_by_key(SHEET_ID)
-            try:
-                worksheet = sh.worksheet(nombre_pestana)
-            except Exception:
-                return pd.DataFrame(columns=expected)
-
-            data = worksheet.get_all_values()
-            if not data:
-                return pd.DataFrame(columns=expected)
-
-            primera_fila = normalizar_encabezados(data[0])
-            if expected and "usuario" in expected and "usuario" not in primera_fila:
-                # Formato antiguo sin encabezado: la primera fila son datos.
-                # No se modifica la hoja; la próxima escritura insertará el encabezado.
-                return pd.DataFrame(data, columns=expected[:len(data[0])])
-            if len(data) > 1:
-                return pd.DataFrame(data[1:], columns=primera_fila)
-            return pd.DataFrame(columns=primera_fila)
-        except Exception as e:
-            st.error(f"Error cargando pestaña '{nombre_pestana}' vía API: {e}")
-
-    # Las contraseñas nunca se leen por el CSV público (gviz): si la hoja
-    # está compartida con enlace, cualquiera podría leerlas.
-    if nombre_pestana == "Usuarios":
-        st.error("No se pudo leer la lista de usuarios: revise la conexión con Google Sheets.")
-        return pd.DataFrame()
-
-    try:
-        ts = int(time.time())
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={nombre_pestana}&_nocache={ts}"
-        df = pd.read_csv(url, dtype=str)
-        df.columns = [str(col).replace('\xa0', '').strip().lower() for col in df.columns]
-        return df
-    except Exception as e:
-        st.error(f"Error cargando pestaña '{nombre_pestana}' vía CSV: {e}")
-        return pd.DataFrame()
-
-def cargar_usuarios() -> pd.DataFrame:
-    return cargar_pestana("Usuarios")
 
 # =========================================================
-# FUNCIONES AUXILIARES DE DATOS
+# UTILIDADES DE PRESENTACIÓN
 # =========================================================
-def parsear_fecha_flexible(texto):
-    if pd.isna(texto) or not str(texto).strip():
-        return None
-    
-    val = str(texto).strip().lower()
-    for sep in ['/', '.', ' ', '_']:
-        val = val.replace(sep, '-')
-    
-    parts = [p for p in val.split('-') if p]
-    
-    if len(parts) >= 2:
-        mes_cand = parts[0]
-        anio_cand = parts[-1]
-        if mes_cand in MESES_MAP and anio_cand.isdigit():
-            m = MESES_MAP[mes_cand]
-            y_int = int(anio_cand)
-            if y_int < 100:
-                y = dt.now().year if y_int < 24 else 2000 + y_int
-            else:
-                y = y_int
-            return datetime.date(y, m, 1)
-
-    res = pd.to_datetime(val, errors="coerce", dayfirst=True)
-    if pd.notna(res):
-        return datetime.date(res.year, res.month, 1)
-            
-    return None
-
 def get_image_base64(file_path):
     if os.path.exists(file_path):
         with open(file_path, "rb") as image_file:
-            encoded = base64.b64encode(image_file.read()).decode()
-            return f"data:image/png;base64,{encoded}"
+            return f"data:image/png;base64,{base64.b64encode(image_file.read()).decode()}"
     return "https://raw.githubusercontent.com/alejandro-orte/Fedeso/main/fedeso%20imagen%20web.png"
+
 
 LOGO_URL = get_image_base64("fedeso imagen web.png")
 
-def limpiar_numero(valor):
-    if pd.isna(valor) or valor is None:
-        return 0.0
-    texto = str(valor).replace('$', '').replace(',', '').replace('%', '').replace(' ', '').strip()
-    try:
-        return float(texto)
-    except ValueError:
-        return 0.0
 
-def normalizar_texto(serie: pd.Series, minusculas: bool = True) -> pd.Series:
-    res = (
-        serie.fillna("")
-        .astype(str)
-        .str.replace(r'\xa0', '', regex=True)
-        .str.replace(r"\.0$", "", regex=True)
-        .str.strip()
-    )
-    return res.str.lower() if minusculas else res
+def dinero(valor) -> str:
+    return f"${valor:,.0f}"
 
-# =========================================================
-# HELPERS REUTILIZABLES
-# =========================================================
-def normalizar_encabezados(fila) -> list:
-    """Encabezados en minúsculas, sin espacios sobrantes ni espacios no separables."""
-    return [str(c).replace('\xa0', '').strip().lower() for c in fila]
 
-def normalizar_clave(valor) -> str:
-    """Normaliza un identificador de usuario (cédula) para compararlo."""
-    return normalizar_texto(pd.Series([valor])).iloc[0]
-
-def calcular_cuota(P, i, n):
-    """Cuota fija mensual (sistema francés). i = tasa mensual, n = número de cuotas."""
-    n = max(1, int(n))
-    if i > 0:
-        factor = (1 + i) ** n
-        return P * (i * factor) / (factor - 1)
-    return P / n
-
-def formato_estado_badge(val):
-    """Etiqueta visual para el estado de una cuota en el plan de pagos."""
-    val_str = str(val).lower()
-    if "pagad" in val_str or "al dia" in val_str or "al día" in val_str:
+def badge_cuota(estado) -> str:
+    texto = str(estado).lower()
+    if "pagad" in texto or "al dia" in texto or "al día" in texto:
         return "🟢 Pagado"
-    elif "mora" in val_str or "atras" in val_str:
+    if "mora" in texto or "atras" in texto:
         return "🔴 En Mora"
-    elif "pendiente" in val_str or "curso" in val_str:
+    if "pendiente" in texto or "curso" in texto:
         return "🟡 Pendiente"
-    return val
+    return str(estado)
+
+
+BADGES_CREDITO = {
+    "finalizado": '<span class="status-tag-green">🟢 Finalizado</span>',
+    "mora": '<span class="status-tag-red">🔴 En Mora</span>',
+    "pendiente": '<span class="status-tag-yellow">🟡 Pendiente</span>',
+    "al_dia": '<span class="status-tag-green">🟢 Al día</span>',
+    "sin_plan": '<span class="status-tag-gray">Sin plan de pagos</span>',
+}
+
+
+def mensaje_db_error(e: Exception):
+    st.error(f"No se pudo completar la operación en la base de datos: {e}")
+
 
 # =========================================================
 # CONTROL DE SESIÓN
@@ -663,7 +169,7 @@ if "pantalla" not in st.session_state:
     st.session_state["pantalla"] = "dashboard"
 
 # =========================================================
-# LOGIN DE USUARIOS
+# LOGIN
 # =========================================================
 if not st.session_state["autenticado"]:
     col_a, col_b, col_c = st.columns([1, 2, 1])
@@ -672,7 +178,7 @@ if not st.session_state["autenticado"]:
         st.write("")
         st.markdown(
             f"""<div style="text-align: center;"><img src="{LOGO_URL}" width="200"></div>""",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
         with st.form("login_form"):
             st.subheader("🔑 Iniciar Sesión")
@@ -684,34 +190,25 @@ if not st.session_state["autenticado"]:
                 if not user_input or not pass_input:
                     st.warning("Por favor ingrese usuario y contraseña.")
                 else:
-                    with st.spinner("Verificando credenciales..."):
-                        try:
-                            df_users = cargar_usuarios()
-                            if "usuario" not in df_users.columns or "contrasena" not in df_users.columns:
-                                st.error("❌ Estructura de tabla no válida.")
-                            else:
-                                df_users["usuario"] = normalizar_texto(df_users["usuario"], minusculas=True)
-                                df_users["contrasena"] = normalizar_texto(df_users["contrasena"], minusculas=False)
-                                valido = df_users[
-                                    (df_users["usuario"] == user_input) & (df_users["contrasena"] == pass_input)
-                                ]
-                                if not valido.empty:
-                                    st.session_state["autenticado"] = True
-                                    st.session_state["usuario"] = user_input
-                                    st.session_state["nombre"] = (
-                                        valido["nombre"].iloc[0] if "nombre" in valido.columns else user_input
-                                    )
-                                    st.session_state["rol"] = (
-                                        valido["rol"].iloc[0].lower().strip() if "rol" in valido.columns else "asociado"
-                                    )
-                                    st.rerun()
-                                else:
-                                    st.error("Usuario o contraseña incorrectos.")
-                        except Exception as e:
-                            st.error(f"Error al conectar: {e}")
+                    entrar = None
+                    try:
+                        with st.spinner("Verificando credenciales..."):
+                            u = db.get_usuario(user_input)
+                        if u and verificar_password(pass_input, u["contrasena"]):
+                            entrar = u
+                        else:
+                            st.error("Usuario o contraseña incorrectos.")
+                    except Exception as e:
+                        mensaje_db_error(e)
+                    if entrar:
+                        st.session_state["autenticado"] = True
+                        st.session_state["usuario"] = entrar["usuario"]
+                        st.session_state["nombre"] = entrar["nombre"] or entrar["usuario"]
+                        st.session_state["rol"] = entrar["rol"]
+                        st.rerun()
 
 # =========================================================
-# DASHBOARD Y NAVEGACIÓN
+# APLICACIÓN (usuario autenticado)
 # =========================================================
 else:
     with st.sidebar:
@@ -725,55 +222,43 @@ else:
                     <small style="color: #2563eb; font-weight: 700;">Rol: {st.session_state['rol'].capitalize()}</small>
                 </div>
             </div>
-            
             <div style="background-color: #e0f2fe; border-left: 5px solid #0284c7; padding: 10px 12px; border-radius: 8px; margin-bottom: 16px;">
                 <strong style="color: #0369a1; font-size: 0.95rem;">📌 MENÚ DE NAVEGACIÓN</strong><br>
                 <span style="color: #0c4a6e; font-size: 0.85rem;">Toque cualquier botón para cambiar de sección:</span>
             </div>
             """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
-        txt_dash = "▶️ 📊 Mi Estado de Cuenta" if st.session_state["pantalla"] == "dashboard" else "📊 Mi Estado de Cuenta"
-        txt_subir = "▶️ 📩 Notificar Pago" if st.session_state["pantalla"] == "subir_comprobante" else "📩 Notificar Pago"
-        txt_sim = "▶️ 🧮 Simulador de Crédito" if st.session_state["pantalla"] == "simulador" else "🧮 Simulador de Crédito"
-        txt_sol = "▶️ 📝 Solicitud de Crédito" if st.session_state["pantalla"] == "solicitud" else "📝 Solicitud de Crédito"
-        txt_adm = "▶️ 🛠️ Panel de Administración" if st.session_state["pantalla"] == "admin" else "🛠️ Panel de Administración"
-
-        if st.button(txt_dash, use_container_width=True, key="btn_dashboard"):
-            st.session_state["pantalla"] = "dashboard"
-            st.rerun()
-
-        if st.button(txt_subir, use_container_width=True, key="btn_subir_side"):
-            st.session_state["pantalla"] = "subir_comprobante"
-            st.rerun()
-
-        if st.button(txt_sim, use_container_width=True, key="btn_simulador"):
-            st.session_state["pantalla"] = "simulador"
-            st.rerun()
-            
-        if st.button(txt_sol, use_container_width=True, key="btn_solicitud"):
-            st.session_state["pantalla"] = "solicitud"
-            st.rerun()
+        pantalla = st.session_state["pantalla"]
+        opciones_menu = [
+            ("dashboard", "📊 Mi Estado de Cuenta", "btn_dashboard"),
+            ("subir_comprobante", "📩 Notificar Pago", "btn_subir_side"),
+            ("simulador", "🧮 Simulador de Crédito", "btn_simulador"),
+            ("solicitud", "📝 Solicitud de Crédito", "btn_solicitud"),
+        ]
+        for clave, texto, key in opciones_menu:
+            etiqueta = f"▶️ {texto}" if pantalla == clave else texto
+            if st.button(etiqueta, use_container_width=True, key=key):
+                st.session_state["pantalla"] = clave
+                st.rerun()
 
         if st.session_state["rol"] == "admin":
             st.divider()
-            if st.button(txt_adm, use_container_width=True, key="btn_admin"):
+            etiqueta = "▶️ 🛠️ Panel de Administración" if pantalla == "admin" else "🛠️ Panel de Administración"
+            if st.button(etiqueta, use_container_width=True, key="btn_admin"):
                 st.session_state["pantalla"] = "admin"
                 st.rerun()
 
         st.divider()
         st.write("")
         if st.button("🚪 Cerrar Sesión", type="primary", use_container_width=True, key="btn_logout"):
-            st.session_state["autenticado"] = False
-            st.session_state["usuario"] = ""
-            st.session_state["nombre"] = ""
-            st.session_state["rol"] = "asociado"
-            st.session_state["pantalla"] = "dashboard"
+            for clave in ["autenticado", "usuario", "nombre", "rol", "pantalla"]:
+                st.session_state.pop(clave, None)
             st.rerun()
 
     st.markdown(
-        f"""
+        """
         <div class="header-box" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h2 style="margin:0; color:white; font-size: 1.7rem; font-weight:800;">FEDESO</h2>
@@ -784,157 +269,82 @@ else:
             </div>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    # ---------------------------------------------------------
-    # 1. PANTALLA: ESTADO DE CUENTA (DASHBOARD)
-    # ---------------------------------------------------------
+    usuario = st.session_state["usuario"]
+
+    # -----------------------------------------------------
+    # 1. ESTADO DE CUENTA
+    # -----------------------------------------------------
     if st.session_state["pantalla"] == "dashboard":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">Mi Estado de Cuenta FEDESO</h3>', unsafe_allow_html=True)
-        usuario_key = normalizar_clave(st.session_state["usuario"])
 
         col_btn_dash, _ = st.columns([1.5, 1])
         with col_btn_dash:
             if st.button("📩 Notificar Pago de Cuota Realizado", type="primary", use_container_width=True, key="btn_subir_main"):
                 st.session_state["pantalla"] = "subir_comprobante"
                 st.rerun()
-
         st.write("")
 
         try:
             with st.spinner("Cargando tu información..."):
-                df_resumen = cargar_pestana("Resumen")
-                df_amort = cargar_pestana("Amortizacion")
+                prestamo = db.get_prestamo(usuario)
+                plan = db.get_plan(usuario)
 
-                num_pagadas = 0
-                total_cuotas = 0
-                estado_proxima_str = "N/A"
-                saldo_pendiente_est = 0.0
-                porcentaje_progreso = 0.0
-                amort_user = pd.DataFrame()
-                
-                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-
-                if "usuario" in df_amort.columns:
-                    df_amort["usuario_clean"] = normalizar_texto(df_amort["usuario"])
-                    amort_user = df_amort[df_amort["usuario_clean"] == usuario_key].copy()
-
-                if not amort_user.empty:
-                    columnas_num = ["intereses", "capital", "saldo"]
-                    for col in columnas_num:
-                        if col in amort_user.columns:
-                            amort_user[col] = amort_user[col].apply(limpiar_numero)
-
-                    if "estado" not in amort_user.columns:
-                        amort_user["estado"] = "Pendiente"
-                    else:
-                        amort_user["estado"] = amort_user["estado"].fillna("Pendiente").astype(str).str.strip()
-
-                    amort_cuotas = amort_user[
-                        ~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])
-                    ].copy()
-                    total_cuotas = len(amort_cuotas)
-
-                    estados_limpios = amort_cuotas["estado"].astype(str).str.lower().str.strip()
-                    cuotas_pagadas_df = amort_cuotas[estados_limpios.isin(ESTADOS_PAGADO)]
-                    num_pagadas = len(cuotas_pagadas_df)
-
-                    proxima_cuota = amort_cuotas[~estados_limpios.isin(ESTADOS_PAGADO)]
-                    
-                    if not proxima_cuota.empty:
-                        mes_proximo = proxima_cuota.iloc[0].get("mes_año", "N/A")
-                        num_cuota_actual = proxima_cuota.iloc[0].get("cuota_num", "N/A")
-                        estado_proxima_str = f"Cuota #{num_cuota_actual} ({mes_proximo})"
-                    else:
-                        estado_proxima_str = "🎉 Completado"
-
-                    if not cuotas_pagadas_df.empty:
-                        saldo_pendiente_est = cuotas_pagadas_df.iloc[-1].get("saldo", 0.0)
-                    else:
-                        cuota_0 = amort_user[amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])]
-                        if not cuota_0.empty:
-                            saldo_pendiente_est = cuota_0.iloc[0].get("saldo", 0.0)
-                        elif "usuario" in df_resumen.columns:
-                            df_resumen["usuario_clean"] = normalizar_texto(df_resumen["usuario"])
-                            r_match = df_resumen[df_resumen["usuario_clean"] == usuario_key]
-                            if not r_match.empty:
-                                saldo_pendiente_est = limpiar_numero(r_match["monto"].iloc[0])
-
-                    if total_cuotas > 0:
-                        porcentaje_progreso = min(1.0, num_pagadas / total_cuotas)
-
-                    hoy = datetime.date.today()
-                    mes_actual_inicio = datetime.date(hoy.year, hoy.month, 1)
-
-                    if total_cuotas > 0 and num_pagadas >= total_cuotas:
-                        badge_estado_credito = '<span class="status-tag-green">🟢 Finalizado</span>'
-                    elif proxima_cuota.empty:
-                        badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-                    else:
-                        texto_fecha_prox = str(proxima_cuota.iloc[0].get("mes_año", "")).strip()
-                        fecha_prox_dt = parsear_fecha_flexible(texto_fecha_prox)
-
-                        if fecha_prox_dt:
-                            if fecha_prox_dt < mes_actual_inicio:
-                                badge_estado_credito = '<span class="status-tag-red">🔴 En Mora</span>'
-                            elif fecha_prox_dt == mes_actual_inicio:
-                                badge_estado_credito = '<span class="status-tag-yellow">🟡 Pendiente</span>'
-                            else:
-                                badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-                        else:
-                            badge_estado_credito = '<span class="status-tag-green">🟢 Al día</span>'
-
-                if "usuario" in df_resumen.columns:
-                    df_resumen["usuario_clean"] = normalizar_texto(df_resumen["usuario"])
-                    resumen_user = df_resumen[df_resumen["usuario_clean"] == usuario_key]
-
-                    if not resumen_user.empty:
-                        monto = limpiar_numero(resumen_user["monto"].iloc[0])
-                        plazo = int(limpiar_numero(resumen_user["plazo"].iloc[0]))
-                        tasa_raw = limpiar_numero(resumen_user["tasa_mv"].iloc[0])
-                        cuota = limpiar_numero(resumen_user["cuota"].iloc[0])
-
-                        tasa_porcentaje_mv = tasa_raw / 100 if tasa_raw >= 1 else (tasa_raw * 100 if tasa_raw < 0.01 else tasa_raw)
-                        tasa_fmt = f"{tasa_porcentaje_mv:.2f}%"
-                        tasa_anual_fmt = f"{(tasa_porcentaje_mv * 12):.2f}%"
-
-                        st.markdown(f"""
-                        <div class="card">
-                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px;">
-                                <h4 style="margin:0; color:#1e3a8a; font-weight:700;">📊 RESUMEN DE PRÉSTAMO</h4>
-                                <span style="font-size: 0.95rem; color:#4b5563;">Asociado: <strong>{st.session_state['nombre']}</strong></span>
-                            </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
-                                <div class="metric-container">
-                                    <span class="metric-label">Monto del Préstamo</span>
-                                    <span class="metric-value">${monto:,.0f}</span>
-                                </div>
-                                <div class="metric-container">
-                                    <span class="metric-label">Plazo (Meses)</span>
-                                    <span class="metric-value">{plazo} meses</span>
-                                </div>
-                                <div class="metric-container">
-                                    <span class="metric-label">Tasa M.V.</span>
-                                    <span class="metric-value">{tasa_fmt}</span>
-                                </div>
-                                <div class="metric-container">
-                                    <span class="metric-label">Cuota Mensual</span>
-                                    <span class="metric-value" style="color:#1e3a8a;">${cuota:,.0f}</span>
-                                </div>
-                                <div class="metric-container">
-                                    <span class="metric-label">Tasa Anual Nominal</span>
-                                    <span class="metric-value">{tasa_anual_fmt}</span>
-                                </div>
-                                <div class="metric-container">
-                                    <span class="metric-label">Estado del Crédito</span>
-                                    <div style="margin-top: 4px;">{badge_estado_credito}</div>
-                                </div>
-                            </div>
+            if not prestamo:
+                st.info("Aún no tienes un préstamo registrado en el fondo.")
+            else:
+                estado = L.estado_credito(plan, date.today())
+                badge = BADGES_CREDITO.get(estado, BADGES_CREDITO["al_dia"])
+                tasa_pct = prestamo["tasa_mv"] * 100
+                st.markdown(f"""
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px;">
+                        <h4 style="margin:0; color:#1e3a8a; font-weight:700;">📊 RESUMEN DE PRÉSTAMO</h4>
+                        <span style="font-size: 0.95rem; color:#4b5563;">Asociado: <strong>{st.session_state['nombre']}</strong></span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                        <div class="metric-container">
+                            <span class="metric-label">Monto del Préstamo</span>
+                            <span class="metric-value">{dinero(prestamo['monto'])}</span>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <div class="metric-container">
+                            <span class="metric-label">Plazo (Meses)</span>
+                            <span class="metric-value">{prestamo['plazo']} meses</span>
+                        </div>
+                        <div class="metric-container">
+                            <span class="metric-label">Tasa M.V.</span>
+                            <span class="metric-value">{tasa_pct:.2f}%</span>
+                        </div>
+                        <div class="metric-container">
+                            <span class="metric-label">Cuota Mensual</span>
+                            <span class="metric-value" style="color:#1e3a8a;">{dinero(prestamo['cuota'])}</span>
+                        </div>
+                        <div class="metric-container">
+                            <span class="metric-label">Tasa Anual Nominal</span>
+                            <span class="metric-value">{tasa_pct * 12:.2f}%</span>
+                        </div>
+                        <div class="metric-container">
+                            <span class="metric-label">Estado del Crédito</span>
+                            <div style="margin-top: 4px;">{badge}</div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
-                pct_val = porcentaje_progreso * 100
+                cuotas = [r for r in plan if r["cuota_num"] > 0]
+                total_cuotas = len(cuotas)
+                pagadas = [r for r in cuotas if str(r["estado"]).lower() in L.ESTADOS_PAGADO]
+                num_pagadas = len(pagadas)
+                prox = L.cuota_actual(plan)
+                prox_txt = f"Cuota #{prox['cuota_num']} ({prox['mes_anio']})" if prox else "🎉 Completado"
+                if pagadas:
+                    saldo_est = max(pagadas, key=lambda r: r["cuota_num"])["saldo"]
+                else:
+                    saldo_est = next((r["saldo"] for r in plan if r["cuota_num"] == 0), prestamo["monto"])
+                pct = (num_pagadas / total_cuotas * 100) if total_cuotas else 0.0
+
                 st.markdown(f"""
                 <div class="card">
                     <h4 style="margin-top:0; color:#1e3a8a; font-weight:700; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px;">
@@ -947,79 +357,55 @@ else:
                         </div>
                         <div class="metric-container">
                             <span class="metric-label">Próximo Mes a Pagar</span>
-                            <span class="metric-value" style="font-size: 1.2rem; color: #b45309;">{estado_proxima_str}</span>
+                            <span class="metric-value" style="font-size: 1.2rem; color: #b45309;">{prox_txt}</span>
                         </div>
                         <div class="metric-container">
                             <span class="metric-label">Saldo Pendiente Estimado</span>
-                            <span class="metric-value">${saldo_pendiente_est:,.0f}</span>
+                            <span class="metric-value">{dinero(saldo_est)}</span>
                         </div>
                     </div>
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 0.90rem; color: #4b5563; font-weight: 700; margin-bottom: 6px;">
                             <span>Progreso Actual de Amortización</span>
-                            <span>{pct_val:.1f}% Pagado</span>
+                            <span>{pct:.1f}% Pagado</span>
                         </div>
                         <div style="background-color: #e5e7eb; border-radius: 10px; height: 12px; width: 100%; overflow: hidden;">
-                            <div style="background-color: #2563eb; width: {pct_val}%; height: 100%; border-radius: 10px;"></div>
+                            <div style="background-color: #2563eb; width: {pct}%; height: 100%; border-radius: 10px;"></div>
                         </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                if not amort_user.empty:
-                    st.markdown('<h4 style="color:#1e3a8a; margin-top:25px; margin-bottom:10px;">📅 PLAN DE PAGOS (AMORTIZACIONES)</h4>', unsafe_allow_html=True)
-                    cols_existentes = [c for c in ["cuota_num", "mes_año", "intereses", "capital", "saldo", "estado"] if c in amort_user.columns]
-                    tabla_mostrar = amort_user[cols_existentes].copy()
-                    renombrar = {
-                        "cuota_num": "Nº",
-                        "mes_año": "Mes/Año",
-                        "intereses": "Intereses",
-                        "capital": "Capital",
-                        "saldo": "Saldo",
-                        "estado": "Estado de Pago"
-                    }
-                    tabla_mostrar = tabla_mostrar.rename(columns=renombrar)
-
-                    if "Estado de Pago" in tabla_mostrar.columns:
-                        tabla_mostrar["Estado de Pago"] = tabla_mostrar["Estado de Pago"].apply(formato_estado_badge)
-
-                    st.dataframe(
-                        tabla_mostrar.style.format({
-                            "Intereses": "${:,.0f}",
-                            "Capital": "${:,.0f}",
-                            "Saldo": "${:,.0f}"
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                else:
-                    st.warning("No hay registros de plan de pagos programado.")
+                st.markdown('<h4 style="color:#1e3a8a; margin-top:25px; margin-bottom:10px;">📅 PLAN DE PAGOS (AMORTIZACIONES)</h4>', unsafe_allow_html=True)
+                tabla = pd.DataFrame(plan)[["cuota_num", "mes_anio", "intereses", "capital", "saldo", "estado"]]
+                tabla["estado"] = tabla["estado"].apply(badge_cuota)
+                tabla = tabla.rename(columns={
+                    "cuota_num": "Nº", "mes_anio": "Mes/Año", "intereses": "Intereses",
+                    "capital": "Capital", "saldo": "Saldo", "estado": "Estado de Pago",
+                })
+                st.dataframe(
+                    tabla.style.format({"Intereses": "${:,.0f}", "Capital": "${:,.0f}", "Saldo": "${:,.0f}"}),
+                    use_container_width=True,
+                    hide_index=True,
+                )
         except Exception as e:
-            st.error(f"Error al procesar la información: {e}")
+            mensaje_db_error(e)
 
-    # ---------------------------------------------------------
-    # 2. PANTALLA: NOTIFICAR PAGO AL ADMINISTRADOR
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 2. NOTIFICAR PAGO
+    # -----------------------------------------------------
     elif st.session_state["pantalla"] == "subir_comprobante":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📩 Notificar Pago Realizado</h3>', unsafe_allow_html=True)
-        usuario_key = normalizar_clave(st.session_state["usuario"])
-        
-        df_amort = cargar_pestana("Amortizacion")
-        opciones_cuotas = []
-        
-        if "usuario" in df_amort.columns:
-            df_amort["usuario_clean"] = normalizar_texto(df_amort["usuario"])
-            amort_user = df_amort[df_amort["usuario_clean"] == usuario_key].copy()
-            if not amort_user.empty:
-                amort_cuotas = amort_user[~amort_user["cuota_num"].astype(str).str.strip().isin(["0", "0.0"])].copy()
-                for _, row in amort_cuotas.iterrows():
-                    c_num = str(row.get("cuota_num", "")).strip()
-                    m_txt = str(row.get("mes_año", "")).strip()
-                    est = str(row.get("estado", "Pendiente")).strip()
-                    opciones_cuotas.append(f"Cuota #{c_num} ({m_txt}) - Estado actual: {est}")
-        
-        if not opciones_cuotas:
-            opciones_cuotas = ["General / Cuota Mes Actual"]
+        try:
+            plan = db.get_plan(usuario)
+        except Exception as e:
+            mensaje_db_error(e)
+            plan = []
+
+        opciones = [
+            f"Cuota #{r['cuota_num']} ({r['mes_anio']}) - Estado actual: {r['estado']}"
+            for r in plan if r["cuota_num"] > 0
+        ] or ["General / Cuota Mes Actual"]
 
         st.markdown("""
         <div class="card" style="background-color: #f0fdf4; border-color: #bbf7d0;">
@@ -1030,66 +416,44 @@ else:
         """, unsafe_allow_html=True)
 
         with st.form("form_notificar_pago"):
-            cuota_seleccionada = st.selectbox("1. Seleccione la cuota que notifica:", opciones_cuotas)
+            cuota_seleccionada = st.selectbox("1. Seleccione la cuota que notifica:", opciones)
             comentarios = st.text_input("2. Observaciones adicionales o N° de transferencia (Opcional):").strip()
-            
             submit_comp = st.form_submit_button("📩 Confirmar y Notificar Pago al Administrador", use_container_width=True)
 
             if submit_comp:
-                with st.spinner("Enviando notificación al administrador..."):
-                    fecha_hoy_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                    
-                    fila_comp = [
-                        usuario_key,
-                        st.session_state["nombre"],
-                        cuota_seleccionada,
-                        fecha_hoy_str,
-                        "Sin comprobante",
-                        "text/plain",
-                        "",
-                        comentarios if comentarios else "Notificación rápida",
-                        "Pendiente"
-                    ]
-                    
-                    if agregar_fila_sheet("Comprobantes", fila_comp):
-                        st.success("✅ ¡Notificación de pago enviada correctamente! El administrador la verificará y actualizará la cuota.")
-                    else:
-                        st.error("No se pudo enviar la notificación. Verifique la conexión con Google Sheets.")
+                try:
+                    with st.spinner("Enviando notificación al administrador..."):
+                        db.insertar_comprobante(
+                            usuario, st.session_state["nombre"], cuota_seleccionada,
+                            comentarios if comentarios else "Notificación rápida",
+                        )
+                    st.success("✅ ¡Notificación de pago enviada correctamente! El administrador la verificará y actualizará la cuota.")
+                except Exception as e:
+                    mensaje_db_error(e)
 
-    # ---------------------------------------------------------
-    # 3. PANTALLA: SIMULADOR DE CRÉDITO
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 3. SIMULADOR
+    # -----------------------------------------------------
     elif st.session_state["pantalla"] == "simulador":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🧮 Simulador de Crédito FEDESO</h3>', unsafe_allow_html=True)
-        tasa_display = f"{TASA_MENSUAL_DEFAULT * 100:.2f}% M.V."
-
         st.markdown(f"""
         <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe;">
-            <span style="color: #1e40af; font-size: 1rem;">💡 <strong>CALCULADORA DE CUOTAS:</strong> Diseña tu plan de crédito ideal. Tasa de interés mensual aplicada: <strong>{tasa_display}</strong></span>
+            <span style="color: #1e40af; font-size: 1rem;">💡 <strong>CALCULADORA DE CUOTAS:</strong> Diseña tu plan de crédito ideal. Tasa de interés mensual aplicada: <strong>{L.TASA_MENSUAL_DEFAULT * 100:.2f}% M.V.</strong></span>
         </div>
         """, unsafe_allow_html=True)
 
         col_monto, col_plazo = st.columns(2)
         with col_monto:
-            monto_sim = st.number_input(
-                "Monto del préstamo ($)", min_value=100000, max_value=100000000, value=5000000, step=500000, format="%d"
-            )
+            monto_sim = st.number_input("Monto del préstamo ($)", min_value=100000, max_value=100000000,
+                                        value=5000000, step=500000, format="%d")
         with col_plazo:
-            plazo_sim = st.number_input(
-                "Plazo deseado (Meses)", min_value=1, max_value=120, value=24, step=1
-            )
+            plazo_sim = st.number_input("Plazo deseado (Meses)", min_value=1, max_value=120, value=24, step=1)
 
-        i = TASA_MENSUAL_DEFAULT
         n = int(plazo_sim)
-        P = float(monto_sim)
-
-        cuota_exacta = calcular_cuota(P, i, n)
-
-        cuota_sim = round(cuota_exacta)
-        fecha_inicio = dt.now()
-        fecha_fin = fecha_inicio + relativedelta(months=n)
-        meses_esp = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-        fecha_fin_str = f"{meses_esp[fecha_fin.month - 1]} de {fecha_fin.year}"
+        primera = L.sumar_meses(date.today().replace(day=1), 1)
+        cuota_sim, plan_sim = L.generar_plan(float(monto_sim), n, L.TASA_MENSUAL_DEFAULT, primera)
+        fin = L.sumar_meses(primera, n - 1)
+        fecha_fin_str = f"{L.MESES_LARGOS[fin.month - 1]} de {fin.year}"
 
         st.markdown(f"""
         <div class="card" style="background-color: #f8fafc; border-left: 5px solid #2563eb;">
@@ -1097,7 +461,7 @@ else:
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 12px;">
                 <div class="metric-container">
                     <span class="metric-label">Cuota Mensual Estimada</span>
-                    <span class="metric-value" style="color:#2563eb; font-size: 1.5rem;">${cuota_sim:,.0f}</span>
+                    <span class="metric-value" style="color:#2563eb; font-size: 1.5rem;">{dinero(cuota_sim)}</span>
                 </div>
                 <div class="metric-container">
                     <span class="metric-label">Fecha de Finalización</span>
@@ -1105,63 +469,36 @@ else:
                 </div>
                 <div class="metric-container">
                     <span class="metric-label">Total a Pagar Estimado</span>
-                    <span class="metric-value">${cuota_sim * n:,.0f}</span>
+                    <span class="metric-value">{dinero(cuota_sim * n)}</span>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
         st.markdown('<h4 style="color:#1e3a8a; margin-top:20px; margin-bottom:10px;">📅 PROYECCIÓN PASO A PASO</h4>', unsafe_allow_html=True)
-        
-        saldo = P
-        cronograma = []
-
-        for cuota_n in range(1, n + 1):
-            fecha_cuota = fecha_inicio + relativedelta(months=cuota_n)
-            mes_txt = f"{meses_esp[fecha_cuota.month - 1][:3]}-{str(fecha_cuota.year)[2:]}"
-            interes_cuota = round(saldo * i)
-
-            if cuota_n == n:
-                capital_cuota = round(saldo)
-                cuota_aplicada = capital_cuota + interes_cuota
-                saldo = 0.0
-            else:
-                capital_cuota = cuota_sim - interes_cuota
-                saldo -= capital_cuota
-                cuota_aplicada = cuota_sim
-
-            cronograma.append({
-                "Nº": cuota_n,
-                "Mes/Año": mes_txt,
-                "Cuota Fija": cuota_aplicada,
-                "Intereses": interes_cuota,
-                "Capital": capital_cuota,
-                "Saldo Restante": max(0.0, saldo)
-            })
-
-        df_cronograma = pd.DataFrame(cronograma)
+        cronograma = pd.DataFrame([
+            {"Nº": r["cuota_num"], "Mes/Año": r["mes_anio"],
+             "Cuota Fija": r["intereses"] + r["capital"], "Intereses": r["intereses"],
+             "Capital": r["capital"], "Saldo Restante": r["saldo"]}
+            for r in plan_sim if r["cuota_num"] > 0
+        ])
         st.dataframe(
-            df_cronograma.style.format({
-                "Cuota Fija": "${:,.0f}",
-                "Intereses": "${:,.0f}",
-                "Capital": "${:,.0f}",
-                "Saldo Restante": "${:,.0f}"
-            }),
+            cronograma.style.format({"Cuota Fija": "${:,.0f}", "Intereses": "${:,.0f}",
+                                     "Capital": "${:,.0f}", "Saldo Restante": "${:,.0f}"}),
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
         )
         st.write("")
         if st.button("📝 Solicitar este Crédito", type="primary", use_container_width=True):
             st.session_state["pantalla"] = "solicitud"
             st.rerun()
 
-# ---------------------------------------------------------
-    # NUEVA PANTALLA: SOLICITUD DE CRÉDITO
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 4. SOLICITUD DE CRÉDITO
+    # -----------------------------------------------------
     elif st.session_state["pantalla"] == "solicitud":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">📝 Solicitud de Crédito</h3>', unsafe_allow_html=True)
-        
-        # --- BLOQUE DE INFORMACIÓN (Líneas y Condiciones) ---
+
         st.markdown(f"""
         <div class="card" style="background-color: #f8fafc; border-left: 5px solid #2563eb; margin-bottom: 20px;">
             <div style="margin-bottom: 15px;">
@@ -1196,35 +533,20 @@ else:
         """, unsafe_allow_html=True)
 
         with st.form("form_solicitar_credito"):
-            
             st.markdown("#### Línea de Crédito *")
-            linea_credito = st.radio(
-                "Seleccione la línea de crédito",
-                ["Crédito Express", "Crédito Ordinario", "Retanqueo"],
-                label_visibility="collapsed"
-            )
-            
+            linea_credito = st.radio("Seleccione la línea de crédito", LINEAS_CREDITO, label_visibility="collapsed")
+
             st.write("")
             st.markdown("#### Valor solicitado *")
-            valor_solicitado = st.number_input(
-                "Ingrese el valor a solicitar ($)", 
-                min_value=0, 
-                step=100000, 
-                format="%d",
-                label_visibility="collapsed"
-            )
-            
+            valor_solicitado = st.number_input("Ingrese el valor a solicitar ($)", min_value=0, step=100000,
+                                               format="%d", label_visibility="collapsed")
+
             st.write("")
             st.markdown("#### Número de cuotas")
-            # Plazo según condiciones de la línea: 6 a 24 meses (12 cuotas por defecto)
-            opciones_cuotas = [str(i) for i in range(6, 25)]
-            numero_cuotas = st.selectbox(
-                "Elegir",
-                options=opciones_cuotas,
-                index=opciones_cuotas.index("12"),
-                label_visibility="collapsed"
-            )
-            
+            opciones_plazo = [str(i) for i in range(6, 25)]  # 6 a 24 meses, según condiciones
+            numero_cuotas = st.selectbox("Elegir", options=opciones_plazo,
+                                         index=opciones_plazo.index("12"), label_visibility="collapsed")
+
             st.write("")
             submit_solicitud = st.form_submit_button("📩 Enviar Solicitud de Crédito", use_container_width=True)
 
@@ -1232,41 +554,30 @@ else:
                 if valor_solicitado <= 0:
                     st.error("El valor solicitado debe ser mayor a 0.")
                 else:
-                    with st.spinner("Enviando su solicitud al administrador..."):
-                        fecha_hoy_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                        usuario_key = normalizar_clave(st.session_state["usuario"])
-                        
-                        fila_sol = [
-                            usuario_key,
-                            st.session_state["nombre"],
-                            linea_credito,
-                            f"${valor_solicitado:,.0f}",
-                            numero_cuotas,
-                            fecha_hoy_str,
-                            "Pendiente"
-                        ]
-                        
-                        if agregar_fila_sheet("Solicitudes", fila_sol):
-                            st.success("✅ ¡Su solicitud de crédito ha sido enviada exitosamente! El administrador la revisará pronto.")
-                        else:
-                            st.error("No se pudo enviar la solicitud. Verifique la conexión con Google Sheets.")
-  
+                    try:
+                        with st.spinner("Enviando su solicitud al administrador..."):
+                            db.insertar_solicitud(usuario, st.session_state["nombre"], linea_credito,
+                                                  float(valor_solicitado), int(numero_cuotas))
+                        st.success("✅ ¡Su solicitud de crédito ha sido enviada exitosamente! El administrador la revisará pronto.")
+                    except Exception as e:
+                        mensaje_db_error(e)
 
-    # ---------------------------------------------------------
-    # 4. PANTALLA: PANEL DE ADMINISTRACIÓN
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 5. PANEL DE ADMINISTRACIÓN
+    # -----------------------------------------------------
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
-        
-        tab_user, tab_prestamo, tab_cuota, tab_verif, tab_resumen_fondo = st.tabs([
-            "👤 Crear Usuario", 
-            "💵 Registrar Préstamo", 
+
+        tab_user, tab_prestamo, tab_cuota, tab_verif, tab_solic, tab_resumen = st.tabs([
+            "👤 Crear Usuario",
+            "💵 Registrar Préstamo",
             "📅 Registrar Pago / Cuota",
             "📩 Verificar Notificaciones",
-            "📈 Resumen Financiero del Fondo"
+            "📝 Solicitudes",
+            "📈 Resumen del Fondo",
         ])
 
-        # TAB 1: CREAR USUARIOS
+        # ---- Crear usuario ----
         with tab_user:
             st.subheader("Registrar Nuevo Usuario")
             with st.form("form_crear_usuario"):
@@ -1277,307 +588,229 @@ else:
                 with col2:
                     new_pass = st.text_input("Contraseña").strip()
                     new_rol = st.selectbox("Rol", ["asociado", "admin"])
-                
-                btn_crear_u = st.form_submit_button("Guardar Usuario en Google Sheets", use_container_width=True)
+                btn_crear_u = st.form_submit_button("Guardar Usuario", use_container_width=True)
 
                 if btn_crear_u:
-                    if new_user and new_pass and new_nombre:
-                        fila = [new_user, new_pass, new_nombre, new_rol]
-                        if agregar_fila_sheet("Usuarios", fila):
-                            st.success(f"✅ Usuario **{new_user}** registrado con éxito.")
-                    else:
+                    if not (new_user and new_pass and new_nombre):
                         st.warning("Por favor complete todos los campos.")
+                    else:
+                        try:
+                            db.crear_usuario(new_user, hash_password(new_pass), new_nombre, new_rol)
+                            st.success(f"✅ Usuario **{new_user}** registrado con éxito.")
+                        except ValueError as e:
+                            st.error(str(e))
+                        except Exception as e:
+                            mensaje_db_error(e)
 
-        # TAB 2: REGISTRAR PRÉSTAMO
+        # ---- Registrar préstamo ----
         with tab_prestamo:
             st.subheader("Asignar Préstamo a Asociado")
             with st.form("form_crear_prestamo"):
                 user_p = st.text_input("Usuario del Asociado").strip().lower()
                 col_p1, col_p2, col_p3 = st.columns(3)
                 with col_p1:
-                    monto_p = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000)
+                    monto_p = st.number_input("Monto del Préstamo ($)", value=5000000, step=500000, min_value=100000)
                 with col_p2:
-                    plazo_p = st.number_input("Plazo en Meses", value=24, step=1)
+                    plazo_p = st.number_input("Plazo en Meses", value=24, step=1, min_value=1, max_value=120)
                 with col_p3:
-                    fecha_inicio_p = st.date_input("Fecha de Primera Cuota", value=dt.now().date())
+                    fecha_inicio_p = st.date_input("Mes de la Primera Cuota", value=date.today())
 
-                i_p = TASA_MENSUAL_DEFAULT
-                n_p = int(plazo_p)
-                P_p = float(monto_p)
-                
-                cuota_calc = round(calcular_cuota(P_p, i_p, n_p)) if n_p > 0 else round(P_p)
-
-                st.info(f"Cuota mensual calculada: **${cuota_calc:,.0f}** | Se generarán **{n_p + 1} filas** (Cuota 0 de desembolso + {n_p} cuotas).")
-
+                cuota_calc, _ = L.generar_plan(float(monto_p), int(plazo_p), L.TASA_MENSUAL_DEFAULT,
+                                               date(fecha_inicio_p.year, fecha_inicio_p.month, 1))
+                st.info(f"Cuota mensual calculada: **{dinero(cuota_calc)}** | Se generarán **{int(plazo_p) + 1} filas** (Cuota 0 de desembolso + {int(plazo_p)} cuotas).")
                 btn_crear_p = st.form_submit_button("Guardar Préstamo y Generar Amortización", use_container_width=True)
 
                 if btn_crear_p:
-                    if user_p:
-                        with st.spinner("Guardando préstamo y generando plan de pagos completo..."):
-                            fila_resumen = [user_p, str(monto_p), str(plazo_p), f"{TASA_MENSUAL_DEFAULT:.7f}", str(cuota_calc)]
-                            exito_resumen = agregar_fila_sheet("Resumen", fila_resumen)
-
-                            filas_amortizacion = []
-                            filas_amortizacion.append([
-                                user_p, "0", "", "$0", "$0", f"${P_p:,.0f}", "Pendiente"
-                            ])
-
-                            fecha_base = datetime.date(fecha_inicio_p.year, fecha_inicio_p.month, 1)
-                            meses_cortos = MESES_CORTOS
-
-                            saldo_acc = P_p
-                            for idx_c in range(1, n_p + 1):
-                                f_cuota = fecha_base + relativedelta(months=idx_c - 1)
-                                mes_txt_c = f"{meses_cortos[f_cuota.month - 1]}-{str(f_cuota.year)[2:]}"
-                                
-                                interes_c = round(saldo_acc * i_p)
-                                
-                                if idx_c == n_p:
-                                    capital_c = round(saldo_acc)
-                                    saldo_acc = 0.0
-                                else:
-                                    capital_c = cuota_calc - interes_c
-                                    saldo_acc -= capital_c
-
-                                filas_amortizacion.append([
-                                    user_p,
-                                    str(idx_c),
-                                    mes_txt_c,
-                                    f"${interes_c:,.0f}",
-                                    f"${capital_c:,.0f}",
-                                    f"${max(0.0, saldo_acc):,.0f}",
-                                    "Pendiente"
-                                ])
-
-                            exito_amort = agregar_filas_sheet("Amortizacion", filas_amortizacion)
-
-                            if exito_resumen and exito_amort:
-                                st.success(f"🎉 ¡Préstamo registrado exitosamente! Se han guardado las {len(filas_amortizacion)} cuotas de **{user_p}** en Google Sheets.")
-                    else:
+                    if not user_p:
                         st.warning("Por favor ingrese el usuario del asociado.")
+                    else:
+                        try:
+                            if not db.get_usuario(user_p):
+                                st.error(f"No existe el usuario **{user_p}**. Créelo primero en la pestaña Crear Usuario.")
+                            elif db.get_prestamo(user_p):
+                                st.error(f"**{user_p}** ya tiene un préstamo registrado. Use la pestaña de pagos para abonos.")
+                            else:
+                                with st.spinner("Guardando préstamo y generando plan de pagos..."):
+                                    cuota, plan = L.generar_plan(float(monto_p), int(plazo_p), L.TASA_MENSUAL_DEFAULT,
+                                                                 date(fecha_inicio_p.year, fecha_inicio_p.month, 1))
+                                    db.crear_prestamo(user_p, float(monto_p), int(plazo_p),
+                                                      L.TASA_MENSUAL_DEFAULT, float(cuota), plan)
+                                st.success(f"🎉 ¡Préstamo registrado! Se guardaron las {len(plan)} filas de **{user_p}**.")
+                        except Exception as e:
+                            mensaje_db_error(e)
 
-        # TAB 3: REGISTRAR CUOTAS Y ABONOS EXTRAORDINARIOS
+        # ---- Registrar pago / recálculo ----
         with tab_cuota:
             st.subheader("Registrar Pago / Abono Extraordinario con Recálculo Automático")
-            
-            df_amort = cargar_pestana("Amortizacion")
-            usuarios_lista = []
-            if "usuario" in df_amort.columns:
-                usuarios_lista = sorted(list(set(df_amort["usuario"].dropna().astype(str).str.strip().str.lower())))
-                usuarios_lista = [u for u in usuarios_lista if u and u != "usuario"]
+            try:
+                prestamistas = db.listar_prestamistas()
+            except Exception as e:
+                mensaje_db_error(e)
+                prestamistas = []
 
-            col_u_sel, _ = st.columns([1, 1])
-            with col_u_sel:
-                user_c = st.selectbox("Seleccione el Asociado:", usuarios_lista if usuarios_lista else ["Sin usuarios creados"])
+            if not prestamistas:
+                st.info("Todavía no hay préstamos registrados.")
+            else:
+                etiquetas = {p["usuario"]: f"{p['nombre'] or p['usuario']} ({p['usuario']})" for p in prestamistas}
+                user_c = st.selectbox("Seleccione el Asociado:", list(etiquetas.keys()),
+                                      format_func=lambda k: etiquetas[k])
+                plan_c = db.get_plan(user_c)
+                cuotas_c = [r for r in plan_c if r["cuota_num"] > 0]
+                nums = [r["cuota_num"] for r in cuotas_c]
 
-            if user_c and user_c != "Sin usuarios creados":
-                df_amort["usuario_clean"] = normalizar_texto(df_amort["usuario"])
-                df_amort_u = df_amort[df_amort["usuario_clean"] == user_c].copy()
-                
-                if not df_amort_u.empty:
-                    df_amort_u["cuota_num_int"] = df_amort_u["cuota_num"].apply(lambda x: int(limpiar_numero(x)))
-                    df_amort_u = df_amort_u.sort_values("cuota_num_int")
-                    
-                    cuotas_pendientes = df_amort_u[df_amort_u["cuota_num_int"] > 0].copy()
-                    opciones_cuota_num = cuotas_pendientes["cuota_num_int"].tolist()
-                    
-                    # El selector de cuota va FUERA del formulario: dentro de st.form
-                    # no se re-ejecuta al elegir otra cuota, y los montos por defecto
-                    # (intereses y capital) quedarían desactualizados.
-                    num_cuota_sel = st.selectbox(
-                        "Número de Cuota a Pagar:",
-                        opciones_cuota_num,
-                        key=f"cuota_sel_{user_c}"
-                    )
+                # Fuera del formulario: al cambiar la cuota, los montos se actualizan al instante.
+                num_cuota_sel = st.selectbox("Número de Cuota a Pagar:", nums, key=f"cuota_sel_{user_c}")
+                fila_sel = next((r for r in cuotas_c if r["cuota_num"] == num_cuota_sel), None)
+                val_int_def = fila_sel["intereses"] if fila_sel else 0.0
+                val_cap_def = fila_sel["capital"] if fila_sel else 0.0
 
-                    val_int_def = 0.0
-                    val_cap_def = 0.0
-                    if num_cuota_sel is not None:
-                        row_c = cuotas_pendientes[cuotas_pendientes["cuota_num_int"] == num_cuota_sel]
-                        val_int_def = limpiar_numero(row_c.iloc[0]["intereses"]) if not row_c.empty else 0.0
-                        val_cap_def = limpiar_numero(row_c.iloc[0]["capital"]) if not row_c.empty else 0.0
+                with st.form(f"form_abono_recalculo_{user_c}_{num_cuota_sel}"):
+                    col_c1, col_c2 = st.columns(2)
+                    with col_c1:
+                        interes_pagado_input = st.number_input("Intereses a Pagar ($)", value=float(val_int_def), step=1000.0)
+                        capital_pagado_input = st.number_input("Abono a Capital Pagado ($)", value=float(val_cap_def), step=10000.0)
+                    with col_c2:
+                        st.write("**Efecto del Pago / Abono en Cuotas Futuras:**")
+                        tipo_efecto = st.radio(
+                            "Seleccione el tipo de recálculo:",
+                            [
+                                "🟢 Cuota Regular / Normal (Sin abono extra)",
+                                "📉 Abono Extra -> Reducir Cuota Mensual (Mantener plazo restante)",
+                                "⏳ Abono Extra -> Reducir Plazo (Mantener valor de cuota)",
+                            ],
+                        )
+                    btn_guardar_abono = st.form_submit_button("💾 Guardar Pago y Recalcular Crédito", use_container_width=True)
 
-                    with st.form("form_abono_recalculo"):
-                        col_c1, col_c2 = st.columns(2)
-                        with col_c1:
-                            interes_pagado_input = st.number_input("Intereses a Pagar ($)", value=float(val_int_def), step=1000.0)
-                            capital_pagado_input = st.number_input("Abono a Capital Pagado ($)", value=float(val_cap_def), step=10000.0)
+                    if btn_guardar_abono:
+                        if num_cuota_sel is None:
+                            st.error("⚠️ No hay cuotas para registrar a este usuario.")
+                        else:
+                            modo = ("reducir_cuota" if "Reducir Cuota" in tipo_efecto
+                                    else "reducir_plazo" if "Reducir Plazo" in tipo_efecto
+                                    else "normal")
+                            try:
+                                with st.spinner("Recalculando plan de amortización..."):
+                                    db.registrar_pago(user_c, int(num_cuota_sel), float(interes_pagado_input),
+                                                      float(capital_pagado_input), modo)
+                                st.success(f"🎉 ¡Pago de Cuota #{num_cuota_sel} registrado y amortización recalculada para **{user_c}**!")
+                            except Exception as e:
+                                mensaje_db_error(e)
 
-                        with col_c2:
-                            st.write("**Efecto del Pago / Abono en Cuotas Futuras:**")
-                            tipo_efecto = st.radio(
-                                "Seleccione el tipo de recalculo:",
-                                [
-                                    "🟢 Cuota Regular / Normal (Sin abono extra)",
-                                    "📉 Abono Extra -> Reducir Cuota Mensual (Mantener plazo restante)",
-                                    "⏳ Abono Extra -> Reducir Plazo (Mantener valor de cuota)"
-                                ]
-                            )
-
-                        btn_guardar_abono = st.form_submit_button("💾 Guardar Pago y Recalcular Crédito", use_container_width=True)
-
-                        if btn_guardar_abono:
-                            if num_cuota_sel is None:
-                                st.error("⚠️ No hay cuotas pendientes para registrar a este usuario.")
-                            else:
-                                with st.spinner("Recalculando plan de amortización en Google Sheets..."):
-                                    if "Reducir Cuota" in tipo_efecto:
-                                        code_efecto = "reducir_cuota"
-                                    elif "Reducir Plazo" in tipo_efecto:
-                                        code_efecto = "reducir_plazo"
-                                    else:
-                                        code_efecto = "normal"
-
-                                    ok = registrar_pago_con_recalculo(
-                                        user_c,
-                                        int(num_cuota_sel),
-                                        float(interes_pagado_input),
-                                        float(capital_pagado_input),
-                                        code_efecto
-                                    )
-
-                                    if ok:
-                                        st.success(f"🎉 ¡Pago de Cuota #{num_cuota_sel} registrado y amortización recalculada exitosamente para **{user_c}**!")
-                                        st.rerun()
-
-        # TAB 4: VERIFICAR NOTIFICACIONES DE PAGO
+        # ---- Verificar notificaciones ----
         with tab_verif:
             st.subheader("📩 Notificaciones de Pago Pendientes por Verificar")
-            
-            col_ref, _ = st.columns([1, 2])
-            with col_ref:
-                if st.button("🔄 Actualizar / Recargar Notificaciones", key="btn_refresh_comp", use_container_width=True):
-                    st.cache_data.clear()
-                    st.rerun()
+            try:
+                pendientes = db.listar_comprobantes("Pendiente")
+            except Exception as e:
+                mensaje_db_error(e)
+                pendientes = []
 
-            df_comp = cargar_pestana("Comprobantes")
-            
-            if df_comp.empty or "estado" not in df_comp.columns:
-                st.info("No hay notificaciones de pago pendientes en este momento.")
+            if not pendientes:
+                st.success("🎉 ¡No hay pagos pendientes por verificar!")
+            for c in pendientes:
+                col_card, col_action = st.columns([2.5, 1])
+                with col_card:
+                    st.markdown(f"""
+                    <div class="card" style="border-left: 5px solid #2563eb; background-color: #f8fafc; padding: 16px; margin-bottom: 10px;">
+                        <h4 style="margin:0; color:#1e3a8a;">👤 Asociado: {c['nombre']} <small>(Cédula: {c['usuario']})</small></h4>
+                        <p style="margin: 6px 0 2px 0;"><strong>Cuota/Mes Notificado:</strong> <span style="color:#2563eb; font-weight:700;">{c['mes_cuota']}</span></p>
+                        <p style="margin: 2px 0;"><strong>Fecha de Notificación:</strong> {c['fecha']}</p>
+                        <p style="margin: 2px 0; color: #4b5563;"><strong>Notas / Referencia:</strong> {c['observaciones'] or 'Sin notas adicionales'}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_action:
+                    st.write("")
+                    if st.button("✅ Aprobar Pago con 1 Clic", key=f"ok_{c['id']}", type="primary", use_container_width=True):
+                        aprobado = False
+                        try:
+                            aprobado = db.aprobar_comprobante(c["id"])
+                            if not aprobado:
+                                st.warning("Esta notificación ya no está pendiente.")
+                        except Exception as e:
+                            mensaje_db_error(e)
+                        if aprobado:
+                            st.rerun()
+
+            st.markdown("<br><hr>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color: #1e3a8a;'>📁 Historial de Pagos Confirmados</h3>", unsafe_allow_html=True)
+            try:
+                confirmados = pd.DataFrame(db.listar_comprobantes("Aprobado"))
+            except Exception as e:
+                mensaje_db_error(e)
+                confirmados = pd.DataFrame()
+
+            if confirmados.empty:
+                st.info("Aún no hay pagos confirmados en el historial.")
             else:
-                df_comp["estado_clean"] = normalizar_texto(df_comp["estado"])
-                pendientes = df_comp[df_comp["estado_clean"] == "pendiente"]
-                
-                if pendientes.empty:
-                    st.success("🎉 ¡No hay pagos pendientes por verificar! Todos han sido procesados.")
-                else:
-                    for idx, row in pendientes.iterrows():
-                        u_id = row.get("usuario", "N/A")
-                        u_nom = row.get("nombre", u_id)
-                        cuota_sel = row.get("mes_cuota", "N/A")
-                        fecha_sub = row.get("fecha_subida", "N/A")
-                        obs = row.get("observaciones", "")
-                        
-                        col_card, col_action = st.columns([2.5, 1])
-                        
-                        with col_card:
-                            st.markdown(f"""
-                            <div class="card" style="border-left: 5px solid #2563eb; background-color: #f8fafc; padding: 16px; margin-bottom: 10px;">
-                                <h4 style="margin:0; color:#1e3a8a;">👤 Asociado: {u_nom} <small>(Cédula: {u_id})</small></h4>
-                                <p style="margin: 6px 0 2px 0;"><strong>Cuota/Mes Notificado:</strong> <span style="color:#2563eb; font-weight:700;">{cuota_sel}</span></p>
-                                <p style="margin: 2px 0;"><strong>Fecha de Notificación:</strong> {fecha_sub}</p>
-                                <p style="margin: 2px 0; color: #4b5563;"><strong>Notas / Referencia:</strong> {obs if obs else 'Sin notas adicionales'}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                        with col_action:
-                            st.write("")
-                            if st.button(f"✅ Aprobar Pago con 1 Clic", key=f"ok_{idx}", type="primary", use_container_width=True):
-                                with st.spinner("Aprobando y actualizando estado a PAGADO..."):
-                                    ok_amort = actualizar_estado_amortizacion(u_id, cuota_sel, "Pagado")
-                                    ok_comp = actualizar_estado_comprobante(u_id, cuota_sel, "Aprobado")
-                                    if ok_amort or ok_comp:
-                                        st.cache_data.clear()
-                                        st.success(f"✅ El pago de **{u_nom}** ha sido verificado e ingresado correctamente.")
-                                        st.rerun()
-                                    else:
-                                        st.error("Error al actualizar la base de datos.")
-                        st.divider()
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    buscar_texto = st.text_input("🔍 Buscar asociado o ID", placeholder="Ej. Luis Alejandro...")
+                with col2:
+                    fecha_notificacion = st.date_input("📅 Fecha de notificación", value=None)
 
-                # --- NUEVA SECCIÓN: HISTORIAL DE PAGOS CONFIRMADOS ---
-                st.markdown("<br><hr>", unsafe_allow_html=True)
-                st.markdown("<h3 style='color: #1e3a8a;'>📁 Historial de Pagos Confirmados</h3>", unsafe_allow_html=True)
-                
-                # Filtrar solo los pagos aprobados
-                confirmados = df_comp[df_comp["estado_clean"] == "aprobado"].copy()
-                
+                if buscar_texto:
+                    mascara = (confirmados["nombre"].str.contains(buscar_texto, case=False, na=False)
+                               | confirmados["usuario"].str.contains(buscar_texto, case=False, na=False))
+                    confirmados = confirmados[mascara]
+                if fecha_notificacion:
+                    confirmados = confirmados[confirmados["fecha"].str.startswith(fecha_notificacion.strftime("%Y-%m-%d"))]
+
                 if confirmados.empty:
-                    st.info("Aún no hay pagos confirmados en el historial.")
+                    st.warning("No se encontraron resultados para su búsqueda.")
                 else:
-                    # Filtros de búsqueda para el historial (Dinámicos y sin botón inútil)
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        buscar_texto = st.text_input("🔍 Buscar asociado o ID", placeholder="Ej. Luis Alejandro...")
-                    with col2:
-                        # Value puede generar problemas en versiones viejas si no se maneja, Streamlit procesa tuples en rangos de fecha
-                        fecha_notificacion = st.date_input("📅 Fecha de notificación", value=None)
+                    st.dataframe(
+                        confirmados[["usuario", "nombre", "mes_cuota", "fecha", "estado"]].rename(columns={
+                            "usuario": "ID / Cédula", "nombre": "Asociado", "mes_cuota": "Cuota Notificada",
+                            "fecha": "Fecha Notificación", "estado": "Estado"}),
+                        use_container_width=True, hide_index=True, height=250,
+                    )
 
-                    # Lógica de filtrado
-                    if buscar_texto:
-                        if "nombre" in confirmados.columns:
-                            confirmados = confirmados[
-                                confirmados["nombre"].str.contains(buscar_texto, case=False, na=False) | 
-                                confirmados["usuario"].str.contains(buscar_texto, case=False, na=False)
-                            ]
-                        else:
-                            confirmados = confirmados[
-                                confirmados["usuario"].str.contains(buscar_texto, case=False, na=False)
-                            ]
-                    
-                    if fecha_notificacion:
-                        # Control de seguridad por si Streamlit retorna una tupla (rango de fechas)
-                        if isinstance(fecha_notificacion, tuple) and len(fecha_notificacion) > 0:
-                            fecha_str = fecha_notificacion[0].strftime("%Y-%m-%d")
-                        elif not isinstance(fecha_notificacion, tuple):
-                            fecha_str = fecha_notificacion.strftime("%Y-%m-%d")
-                        else:
-                            fecha_str = ""
-                            
-                        if fecha_str:
-                            confirmados = confirmados[confirmados["fecha_subida"].str.contains(fecha_str, case=False, na=False)]
+        # ---- Solicitudes ----
+        with tab_solic:
+            st.subheader("📝 Solicitudes de Crédito Recibidas")
+            try:
+                solicitudes = pd.DataFrame(db.listar_solicitudes())
+            except Exception as e:
+                mensaje_db_error(e)
+                solicitudes = pd.DataFrame()
 
-                    # Preparar los datos para mostrar en la tabla interactiva
-                    if not confirmados.empty:
-                        columnas_disponibles = [c for c in ["usuario", "nombre", "mes_cuota", "fecha_subida", "estado"] if c in confirmados.columns]
-                        
-                        df_mostrar = confirmados[columnas_disponibles].rename(
-                            columns={
-                                "usuario": "ID / Cédula",
-                                "nombre": "Asociado",
-                                "mes_cuota": "Cuota Notificada",
-                                "fecha_subida": "Fecha Notificación",
-                                "estado": "Estado"
-                            }
-                        )
-                        
-                        # Tabla interactiva
-                        st.dataframe(
-                            df_mostrar,
-                            use_container_width=True,
-                            hide_index=True,
-                            height=250
-                        )
-                    else:
-                        st.warning("No se encontraron resultados para su búsqueda.")
-
-        # TAB 5: RESUMEN FINANCIERO DEL FONDO (Directo desde la pestaña 'admin' de Google Sheets)
-        with tab_resumen_fondo:
-            st.subheader("📈 Resumen General y Balance del Fondo FEDESO")
-            st.markdown("""
-            <div class="card" style="background-color: #f8fafc; border-left: 5px solid #1e3a8a;">
-                <p style="color: #1e3a8a; font-size: 1.05rem; font-weight: 700; margin:0;">
-                    📊 Información leída directamente desde la pestaña <strong>'admin'</strong> de Google Sheets. Modifícala en tu hoja de cálculo y se actualizará automáticamente aquí:
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Cargamos dinámicamente la pestaña 'admin' desde Google Sheets
-            df_admin_sheet = cargar_pestana("admin")
-
-            if not df_admin_sheet.empty:
-                # Eliminar columnas duplicadas para evitar el error de PyArrow
-                df_admin_sheet = df_admin_sheet.loc[:, ~df_admin_sheet.columns.duplicated()]
-                # Línea 1456 original
-                st.dataframe(df_admin_sheet, use_container_width=True, hide_index=True)
+            if solicitudes.empty:
+                st.info("Aún no hay solicitudes de crédito.")
             else:
-                st.warning("⚠️ No se encontró información en la pestaña 'admin' de Google Sheets. Asegúrate de crear una pestaña llamada 'admin' en tu documento para visualizar y editar los datos.")
+                st.dataframe(
+                    solicitudes.rename(columns={
+                        "id": "ID", "usuario": "Cédula", "nombre": "Asociado", "linea_credito": "Línea",
+                        "valor_solicitado": "Valor", "numero_cuotas": "Cuotas", "fecha": "Fecha", "estado": "Estado"}).style.format(
+                        {"Valor": "${:,.0f}"}),
+                    use_container_width=True, hide_index=True,
+                )
+                with st.form("form_estado_solicitud"):
+                    sol_id = st.selectbox("Solicitud (ID)", solicitudes["id"].tolist())
+                    nuevo_estado = st.selectbox("Nuevo estado", ESTADOS_SOLICITUD)
+                    if st.form_submit_button("Actualizar estado", use_container_width=True):
+                        actualizado = False
+                        try:
+                            db.actualizar_solicitud(int(sol_id), nuevo_estado)
+                            actualizado = True
+                        except Exception as e:
+                            mensaje_db_error(e)
+                        if actualizado:
+                            st.success(f"Solicitud {sol_id} marcada como {nuevo_estado}.")
+                            st.rerun()
+
+        # ---- Resumen del fondo ----
+        with tab_resumen:
+            st.subheader("📈 Resumen General y Balance del Fondo FEDESO")
+            try:
+                r = db.resumen_fondo()
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Préstamos activos", r["prestamos"])
+                c2.metric("Total prestado", dinero(r["total_prestado"]))
+                c3.metric("Saldo por cobrar (aprox.)", dinero(r["saldo_por_cobrar"]))
+                c4, c5, c6 = st.columns(3)
+                c4.metric("Capital cobrado", dinero(r["capital_cobrado"]))
+                c5.metric("Intereses cobrados", dinero(r["intereses_cobrados"]))
+                c6.metric("Cuotas pagadas", r["cuotas_pagadas"])
+                st.caption(f"Comprobantes pendientes de verificar: {r['comprobantes_pendientes']}")
+            except Exception as e:
+                mensaje_db_error(e)
