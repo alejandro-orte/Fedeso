@@ -11,9 +11,14 @@ import logica as L
 
 @st.cache_resource(show_spinner=False)
 def _pool():
+    url = st.secrets["database"]["url"]
+    # Prueba directa primero: si la contraseña o la dirección están mal, el error real
+    # se muestra en pantalla. El pool oculta ese motivo y solo dice "couldn't get a connection".
+    with psycopg.connect(url, connect_timeout=10) as prueba:
+        prueba.execute("SELECT 1")
     # El pool reconecta solo cuando Neon suspende el cómputo por inactividad.
     return ConnectionPool(
-        conninfo=st.secrets["database"]["url"],
+        conninfo=url,
         min_size=1,
         max_size=5,
         kwargs={"row_factory": dict_row},
@@ -61,6 +66,25 @@ def crear_usuario(usuario: str, contrasena_hash: str, nombre: str, rol: str):
             )
     except psycopg.errors.UniqueViolation:
         raise ValueError(f"Ya existe un usuario con la cédula {usuario}.")
+
+
+def actualizar_usuario(usuario: str, nombre: str, rol: str, contrasena_hash=None):
+    """Cambia nombre y rol; cambia la contraseña solo si se entrega un hash nuevo."""
+    with _pool().connection() as conn:
+        if rol != "admin":
+            otros_admins = conn.execute(
+                "SELECT count(*) AS n FROM usuarios WHERE rol = 'admin' AND usuario <> %s", (usuario,)
+            ).fetchone()["n"]
+            if otros_admins == 0:
+                raise ValueError("Debe quedar al menos un administrador en el sistema.")
+        if contrasena_hash:
+            conn.execute(
+                "UPDATE usuarios SET nombre = %s, rol = %s, contrasena = %s WHERE usuario = %s",
+                (nombre, rol, contrasena_hash, usuario))
+        else:
+            conn.execute(
+                "UPDATE usuarios SET nombre = %s, rol = %s WHERE usuario = %s",
+                (nombre, rol, usuario))
 
 
 # ---------- préstamos y cuotas ----------

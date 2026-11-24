@@ -568,13 +568,14 @@ else:
     elif st.session_state["pantalla"] == "admin" and st.session_state["rol"] == "admin":
         st.markdown('<h3 style="color:#1e3a8a; margin-bottom: 20px;">🛠️ Panel de Administración FEDESO</h3>', unsafe_allow_html=True)
 
-        tab_user, tab_prestamo, tab_cuota, tab_verif, tab_solic, tab_resumen = st.tabs([
+        tab_user, tab_prestamo, tab_cuota, tab_verif, tab_solic, tab_resumen, tab_editar = st.tabs([
             "👤 Crear Usuario",
             "💵 Registrar Préstamo",
             "📅 Registrar Pago / Cuota",
             "📩 Verificar Notificaciones",
             "📝 Solicitudes",
             "📈 Resumen del Fondo",
+            "✏️ Editar Usuarios",
         ])
 
         # ---- Crear usuario ----
@@ -814,3 +815,54 @@ else:
                 st.caption(f"Comprobantes pendientes de verificar: {r['comprobantes_pendientes']}")
             except Exception as e:
                 mensaje_db_error(e)
+
+        # ---- Editar usuarios ----
+        with tab_editar:
+            st.subheader("✏️ Editar Usuario (nombre, rol o contraseña)")
+            try:
+                todos = db.listar_usuarios()
+            except Exception as e:
+                mensaje_db_error(e)
+                todos = []
+
+            if todos:
+                etiquetas = {u["usuario"]: f"{u['nombre'] or u['usuario']} ({u['usuario']})" for u in todos}
+                sel = st.selectbox("Seleccione el usuario:", list(etiquetas.keys()),
+                                   format_func=lambda k: etiquetas[k], key="edit_user_sel")
+                actual = next(u for u in todos if u["usuario"] == sel)
+                roles = ["asociado", "admin"]
+
+                with st.form(f"form_editar_usuario_{sel}"):
+                    nuevo_nombre = st.text_input("Nombre", value=actual["nombre"] or "").strip()
+                    nuevo_rol = st.selectbox("Rol", roles,
+                                             index=roles.index(actual["rol"]) if actual["rol"] in roles else 0)
+                    nueva_clave = st.text_input("Nueva contraseña (déjela vacía para no cambiarla)",
+                                                type="password").strip()
+                    guardar = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+
+                if guardar:
+                    error = None
+                    if not nuevo_nombre:
+                        error = "El nombre no puede quedar vacío."
+                    elif nueva_clave and len(nueva_clave) < 6:
+                        error = "La contraseña debe tener al menos 6 caracteres."
+                    elif sel == st.session_state["usuario"] and nuevo_rol != "admin":
+                        error = "No puedes quitarte a ti mismo el rol de administrador."
+
+                    guardado = False
+                    if error:
+                        st.error(error)
+                    else:
+                        try:
+                            db.actualizar_usuario(sel, nuevo_nombre, nuevo_rol,
+                                                  hash_password(nueva_clave) if nueva_clave else None)
+                            guardado = True
+                        except ValueError as e:
+                            st.error(str(e))
+                        except Exception as e:
+                            mensaje_db_error(e)
+
+                    if guardado:
+                        if sel == st.session_state["usuario"]:
+                            st.session_state["nombre"] = nuevo_nombre
+                        st.rerun()
